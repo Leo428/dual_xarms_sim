@@ -188,7 +188,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.pos_threshold = 1e-2
         self.ori_threshold = 1e-2
         self.ik_max_iters = 2
-        self.ik_rate = RateLimiter(frequency=100.0)
+        self.ik_rate = RateLimiter(frequency=200.0)
         self.ik_controller = IKController(
             self._model,
             self._data,
@@ -394,7 +394,7 @@ from tqdm import tqdm
 import logging
 
 # Set the logging level to ERROR, which ignores WARNING messages
-logging.basicConfig(level=logging.ERROR)
+# logging.basicConfig(level=logging.ERROR)
 
 if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
@@ -402,14 +402,14 @@ if __name__ == "__main__":
 
     for i in tqdm(range(1000000)):
         action = env.action_space.sample() * 0
-        left_data = get_controller_velocity("left")
-        left_xyz = np.array([left_data["x"], left_data["y"], left_data["z"]])
-        right_data = get_controller_velocity("right")
-        right_xyz = np.array([right_data["x"], right_data["y"], right_data["z"]])
+        # left_data = get_controller_velocity("left")
+        # left_xyz = np.array([left_data["x"], left_data["y"], left_data["z"]])
+        # right_data = get_controller_velocity("right")
+        # right_xyz = np.array([right_data["x"], right_data["y"], right_data["z"]])
 
         # left_gripper = left_data["left_trigger"]
         # right_gripper = right_data["right_trigger"]
 
-        action[:3] = left_xyz * 0
-        action[7:10] = right_xyz * 0
+        # action[:3] = left_xyz * 0
+        # action[7:10] = right_xyz * 0
         env.step(action)

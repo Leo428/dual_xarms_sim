@@ -6,6 +6,7 @@
         <material name="white" rgba="1 1 1 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
         <material name="black" rgba="0.149 0.149 0.149 1"/>
+        <material name="orange" rgba="1 0.5 0 1"/>
 
         <mesh file="link_base.stl"/>
         <mesh file="link1.stl"/>
@@ -119,7 +120,7 @@
                                                         <inertial pos="0 -0.016413 0.029258" quat="0.697634 0.115353 -0.115353 0.697634"
                                                         mass="0.048304" diaginertia="1.88037e-05 1.7493e-05 3.56792e-06"/>
                                                         <joint name="left/left_finger_joint" axis="-1 0 0" class="follower"/>
-                                                        <geom material="black" mesh="left_finger"/>
+                                                        <geom material="orange" mesh="left_finger"/>
                                                         <geom class="collision" mesh="left_finger"/>
                                                 </body>
                                             </body>
@@ -131,18 +132,18 @@
                                                 <geom class="collision" mesh="left_inner_knuckle"/>
                                             </body>
                                             <body name="left/right_outer_knuckle" pos="0 -0.035 0.059098">
-                                              <inertial pos="0 -0.021559 0.015181" quat="0.87842 0.47789 0 0" mass="0.033618"
-                                                diaginertia="1.9111e-05 1.79089e-05 1.90167e-06"/>
-                                              <joint name="left/right_driver_joint" axis="-1 0 0" class="driver"/>
-                                              <geom material="black" mesh="right_outer_knuckle"/>
-                                              <geom class="collision" mesh="right_outer_knuckle"/>
-                                              <body name="left/right_finger" pos="0 -0.035465 0.042039">
-                                                    <inertial pos="0 0.016413 0.029258" quat="0.697634 -0.115356 0.115356 0.697634"
-                                                    mass="0.048304" diaginertia="1.88038e-05 1.7493e-05 3.56779e-06"/>
-                                                    <joint name="left/right_finger_joint" axis="1 0 0" class="follower"/>
-                                                    <geom material="black" mesh="right_finger"/>
-                                                    <geom class="collision" mesh="right_finger"/>
-                                              </body>
+                                                <inertial pos="0 -0.021559 0.015181" quat="0.87842 0.47789 0 0" mass="0.033618"
+                                                    diaginertia="1.9111e-05 1.79089e-05 1.90167e-06"/>
+                                                <joint name="left/right_driver_joint" axis="-1 0 0" class="driver"/>
+                                                <geom material="black" mesh="right_outer_knuckle"/>
+                                                <geom class="collision" mesh="right_outer_knuckle"/>
+                                                <body name="left/right_finger" pos="0 -0.035465 0.042039">
+                                                        <inertial pos="0 0.016413 0.029258" quat="0.697634 -0.115356 0.115356 0.697634"
+                                                        mass="0.048304" diaginertia="1.88038e-05 1.7493e-05 3.56779e-06"/>
+                                                        <joint name="left/right_finger_joint" axis="1 0 0" class="follower"/>
+                                                        <geom material="orange" mesh="right_finger"/>
+                                                        <geom class="collision" mesh="right_finger"/>
+                                                </body>
                                             </body>
                                             <body name="left/right_inner_knuckle" pos="0 -0.02 0.074098">
                                                 <inertial pos="1.866e-06 -0.022047 0.026133" quat="0.66415 0.242702 -0.242721 0.664144"
@@ -219,7 +220,7 @@
                                                     <inertial pos="0 -0.016413 0.029258" quat="0.697634 0.115353 -0.115353 0.697634"
                                                     mass="0.048304" diaginertia="1.88037e-05 1.7493e-05 3.56792e-06"/>
                                                     <joint name="right/left_finger_joint" axis="-1 0 0" class="follower"/>
-                                                    <geom material="black" mesh="left_finger"/>
+                                                    <geom material="orange" mesh="left_finger"/>
                                                     <geom class="collision" mesh="left_finger"/>
                                                 </body>
                                             </body>
@@ -240,7 +241,7 @@
                                                         <inertial pos="0 0.016413 0.029258" quat="0.697634 -0.115356 0.115356 0.697634"
                                                         mass="0.048304" diaginertia="1.88038e-05 1.7493e-05 3.56779e-06"/>
                                                         <joint name="right/right_finger_joint" axis="1 0 0" class="follower"/>
-                                                        <geom material="black" mesh="right_finger"/>
+                                                        <geom material="orange" mesh="right_finger"/>
                                                         <geom class="collision" mesh="right_finger"/>
                                                 </body>
                                             </body>
