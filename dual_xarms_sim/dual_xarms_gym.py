@@ -17,8 +17,8 @@ _HERE = Path(__file__).parent
 _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 
 # _PANDA_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
-LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0, 0.6, 0.3]])
-RIGHT_CARTESIAN_BOUNDS = np.asarray([[0, 0.2, 0], [0.7, 0.6, 0.3]])
+LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.2, 0.6, 0.3]])
+RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.2, 0.2, 0], [0.7, 0.6, 0.3]])
 # _SAMPLING_BOUNDS = np.asarray([[0.25, -0.25], [0.55, 0.25]])
 
 # Define joint names based on the xarm7 structure from your model
@@ -400,7 +400,7 @@ if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
     env.reset()
 
-    for i in tqdm(range(1000000)):
+    for i in tqdm(range(100000000)):
         action = env.action_space.sample() * 0
         # left_data = get_controller_velocity("left")
         # left_xyz = np.array([left_data["x"], left_data["y"], left_data["z"]])
