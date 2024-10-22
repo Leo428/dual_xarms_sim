@@ -1,0 +1,37 @@
+[build-system]
+requires = ["flit_core"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "dual_xarms_sim"
+version = "0.0.1"
+readme = "README.md"
+authors = [
+    {name = "Zheyuan Hu", email = "zheyuanh@andrew.cmu.edu"},
+]
+requires-python = ">=3.9"
+dynamic = ["description"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: RL Framework :: Library",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "ipdb",
+    "mujoco",
+    "gymnasium",
+    "imageio",
+    "tqdm",
+    "moviepy",
+]
+keywords = ["robot simulator", "reinforcement learning",]
+
+[tool.flit.module]
+name = "dual_xarms_sim"
