@@ -9,6 +9,7 @@ import numpy as np
 from gymnasium import spaces
 import mink
 from loop_rate_limiters import RateLimiter
+from scipy.spatial.transform import Rotation as R
 
 from dual_xarms_sim.mujoco_gym_env import GymRenderingSpec, MujocoGymEnv
 from dual_xarms_sim.ik_controller import IKController
@@ -16,7 +17,8 @@ from dual_xarms_sim.ik_controller import IKController
 _HERE = Path(__file__).parent
 _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 
-# _PANDA_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
+# LEFT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
+# RIGHT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
 LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.2, 0.6, 0.3]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.2, 0.2, 0], [0.7, 0.6, 0.3]])
 # _SAMPLING_BOUNDS = np.asarray([[0.25, -0.25], [0.55, 0.25]])
@@ -41,9 +43,9 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
     def __init__(
         self,
-        action_scale: np.ndarray = np.asarray([0.2, 1]),
+        action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
-        control_dt: float = 0.01, # 0.005, #200Hz
+        control_freq: int = 10, # 10 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(),
@@ -51,11 +53,12 @@ class DualXarmsGymEnv(MujocoGymEnv):
         image_obs: bool = False,
     ):
         self._action_scale = action_scale
+        self.gym_rate = RateLimiter(frequency=10.0)
 
         super().__init__(
             xml_path=_XML_PATH,
             seed=seed,
-            control_dt=control_dt,
+            control_dt=1 / control_freq,
             physics_dt=physics_dt,
             time_limit=time_limit,
             render_spec=render_spec,
@@ -66,7 +69,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
                 "human",
                 "rgb_array",
             ],
-            "render_fps": int(np.round(1.0 / self.control_dt)),
+            "render_fps": int(control_freq),
         }
 
         self.render_mode = render_mode
@@ -184,31 +187,17 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mink.VelocityLimit(self.model, self.velocity_limits),
             collision_avoidance_limit,
         ]
-        self.ik_solver = "quadprog"
-        self.pos_threshold = 1e-2
-        self.ori_threshold = 1e-2
-        self.ik_max_iters = 2
-        self.ik_rate = RateLimiter(frequency=200.0)
+        self.ik_rate = RateLimiter(frequency=100.0)
         self.ik_controller = IKController(
-            self._model,
-            self._data,
-            self.ik_configuration,
-            self.arm_actuator_ids,
-            self.arm_dof_ids,
-            self.tasks,
-            self.l_ee_task,
-            self.r_ee_task,
-            self.ik_solver,
-            self.ik_limits,
-            self.ik_max_iters,
-            self.pos_threshold,
-            self.ori_threshold,
-            damping=1e-5,
-            rate=self.ik_rate,
-            human_viewer=self._viewer,
+            model=self._model, data=self._data,
+            configuration=self.ik_configuration,
+            actuator_ids=self.arm_actuator_ids, dof_ids=self.arm_dof_ids,
+            tasks=self.tasks, l_ee_task=self.l_ee_task, r_ee_task=self.r_ee_task,
+            ik_solver="quadprog", ik_limits=self.ik_limits,
+            ik_max_iters=2, pos_threshold=1e-2, ori_threshold=1e-2,
+            damping=1e-5, rate=self.ik_rate, human_viewer=self._viewer,
         )
         self.ik_thread = threading.Thread(target=self.ik_controller.run_ik, daemon=True)
-        self.gym_rate = RateLimiter(frequency=10.0)
 
     def reset(
         self, seed=None, **kwargs
@@ -275,14 +264,21 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         # # Set the mocap position.
         left_pos = self._data.mocap_pos[0].copy()
-        left_dpos = np.asarray(left_tcp_pos_delta) * self._action_scale[0]
-        left_npos = np.clip(left_pos + left_dpos, *LEFT_CARTESIAN_BOUNDS)
+        left_npos = np.clip(left_pos + left_tcp_pos_delta * self._action_scale[0], *LEFT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[0] = left_npos
 
+        left_quat = self._data.mocap_quat[0].copy()
+        left_dquat = R.from_euler("xyz", left_tcp_euler_delta * 0.2)
+        left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
+        self._data.mocap_quat[0] = left_nquat
+
         right_pos = self._data.mocap_pos[1].copy()
-        right_dpos = np.asarray(right_tcp_pos_delta) * self._action_scale[0]
-        right_npos = np.clip(right_pos + right_dpos, *RIGHT_CARTESIAN_BOUNDS)
+        right_npos = np.clip(right_pos + right_tcp_pos_delta * self._action_scale[0], *RIGHT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[1] = right_npos
+        right_quat = self._data.mocap_quat[1].copy()
+        right_dquat = R.from_euler("xyz", right_tcp_euler_delta * 0.2)
+        right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
+        self._data.mocap_quat[1] = right_nquat
 
         # Update task targets based on current mocap positions
         self.ik_controller.set_targets(
@@ -290,15 +286,15 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mink.SE3.from_mocap_name(self._model, self._data, "right/target")
         )
 
-        # # Set gripper grasp.
-        # g = self._data.ctrl[self._gripper_ctrl_id] / 255
-        # dg = grasp * self._action_scale[1]
-        # ng = np.clip(g + dg, 0.0, 1.0)
-        # self._data.ctrl[self._gripper_ctrl_id] = ng * 255
-        # self._data.ctrl[self._panda_ctrl_ids] = tau
-
-        # self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
-        # mujoco.mj_step(self._model, self._data)
+        # Set gripper grasp.
+        left_g = self._data.ctrl[self._gripper_ctrl_ids[0]] / 255
+        left_dg = action[6] * self._action_scale[1]
+        left_ng = np.clip(left_g + left_dg, 0.0, 1.0)
+        right_g = self._data.ctrl[self._gripper_ctrl_ids[1]] / 255
+        right_dg = action[13] * self._action_scale[1]
+        right_ng = np.clip(right_g + right_dg, 0.0, 1.0)
+        self._data.ctrl[self._gripper_ctrl_ids[0]] = left_ng * 255
+        self._data.ctrl[self._gripper_ctrl_ids[1]] = right_ng * 255
 
         obs = self._compute_observation()
         # rew = self._compute_reward()
@@ -371,24 +367,16 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
 import requests
 
-def get_controller_velocity(controller_key):
-    url = f"http://127.0.0.1:8000/velocity/{controller_key}"
-    # start_time = time.time()
+def get_controller_data():
+    url = f"http://127.0.0.1:8000/oculus/data"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raises an HTTPError for bad responses
         velocity_data = response.json()
-        # end_time = time.time()
-        # print(f"Time taken to get velocity data: {end_time - start_time}")
         return velocity_data
-    except requests.exceptions.HTTPError as errh:
-        print(f"Http Error: {errh}")
-    except requests.exceptions.ConnectionError as errc:
-        print(f"Error Connecting: {errc}")
-    except requests.exceptions.Timeout as errt:
-        print(f"Timeout Error: {errt}")
-    except requests.exceptions.RequestException as err:
-        print(f"OOps: Something Else: {err}")
+    except Exception as e:
+        print(f"Failed to get controller data due to: {e}")
+        return None
 
 from tqdm import tqdm
 import logging
@@ -402,14 +390,17 @@ if __name__ == "__main__":
 
     for i in tqdm(range(100000000)):
         action = env.action_space.sample() * 0
-        # left_data = get_controller_velocity("left")
-        # left_xyz = np.array([left_data["x"], left_data["y"], left_data["z"]])
-        # right_data = get_controller_velocity("right")
-        # right_xyz = np.array([right_data["x"], right_data["y"], right_data["z"]])
+        oculus_data = get_controller_data()
 
-        # left_gripper = left_data["left_trigger"]
-        # right_gripper = right_data["right_trigger"]
+        if oculus_data is None:
+            env.step(action)
+        else:
+            action[:3] = np.array([oculus_data["left_dx"], oculus_data["left_dy"], oculus_data["left_dz"]])
+            action[3:6] = np.array([oculus_data["left_drx"], oculus_data["left_dry"], oculus_data["left_drz"]])
+            action[6] = oculus_data["left_trigger"]
+            action[7:10] = np.array([oculus_data["right_dx"], oculus_data["right_dy"], oculus_data["right_dz"]])
+            action[10:13] = np.array([oculus_data["right_drx"], oculus_data["right_dry"], oculus_data["right_drz"]])
+            action[13] = oculus_data["right_trigger"]
 
-        # action[:3] = left_xyz * 0
-        # action[7:10] = right_xyz * 0
-        env.step(action)
+            action = np.clip(action, -1, 1)
+            env.step(action)
