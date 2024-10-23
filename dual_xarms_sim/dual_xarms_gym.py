@@ -286,7 +286,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         # Update task targets based on current mocap positions
         self.ik_controller.set_targets(
-            mink.SE3.from_mocap_name(self._model, self._data, "left/target"), 
+            mink.SE3.from_mocap_name(self._model, self._data, "left/target"),
             mink.SE3.from_mocap_name(self._model, self._data, "right/target")
         )
 
