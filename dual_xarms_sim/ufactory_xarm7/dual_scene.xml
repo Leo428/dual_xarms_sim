@@ -1,7 +1,7 @@
 <mujoco model="dual_xarm7 scene">
   <include file="dual_xarm7_nohand.xml" />
 
-  <option timestep=".002" noslip_iterations="5" noslip_tolerance="0"/>
+  <option timestep=".002"/>
   <statistic center="0.2 0 0.4" extent=".65" meansize="0.08" />
 
   <visual>

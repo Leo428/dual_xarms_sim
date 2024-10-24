@@ -1,6 +1,7 @@
 <mujoco model="dual_xarm7">
   <compiler angle="radian" autolimits="true" meshdir="assets" />
   <option integrator="implicitfast" />
+  <option cone="elliptic" impratio="10"/>
 
   <asset>
     <material name="white" rgba="1 1 1 1" />
@@ -44,19 +45,29 @@
         <general gainprm="800" biasprm="0 -800 -80" forcerange="-20 20" />
       </default>
       <default class="spring_link">
-        <joint range="0 0.85" stiffness="0.05" springref="2.62" damping="0.00125" />
+        <joint range="0 0.85" armature="0.01" stiffness="0.05" springref="2.62" damping="0.00125" />
       </default>
       <default class="driver">
-        <joint range="0 0.85" armature="0.005" damping="0.1" solreflimit="0.005 1" />
+        <!-- <joint range="0 0.85" armature="0.005" damping="0.1" solreflimit="0.005 1" /> -->
+        <joint range="0 0.85" armature="0.01" damping="0.1" solreflimit="0.005 1" />
       </default>
       <default class="follower">
-        <joint range="0 0.85" solreflimit="0.005 1" />
+        <!-- <joint range="0 0.85" solreflimit="0.005 1" /> -->
+        <joint range="0 0.85" armature="0.01" solreflimit="0.005 1" />
       </default>
       <site size="0.001" rgba="1 0 0 1" group="4" />
       <default class="collision">
         <geom group="3" type="capsule" condim="6" friction="1 5e-3 5e-4" solref=".01 1" />
         <default class="sphere_collision">
           <geom type="sphere" size="0.0006" rgba="1 0 0 1" />
+        </default>
+        <default class="pad_box1">
+          <geom mass="0" type="box" pos="0 -0.0026 0.028125" size="0.011 0.004 0.009375" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="1 0 0 1"/>
+        </default>
+        <default class="pad_box2">
+          <geom mass="0" type="box" pos="0 -0.0026 0.009375" size="0.011 0.004 0.009375" friction="0.6"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="0 1 0 1"/>
         </default>
       </default>
     </default>
@@ -138,7 +149,9 @@
                           <joint name="left/left_finger_joint"
                             axis="-1 0 0" class="follower" />
                           <geom material="orange" mesh="left_finger" />
-                          <geom class="collision" mesh="left_finger" />
+                          <!-- <geom class="collision" mesh="left_finger" /> -->\
+                          <geom class="pad_box1" name="left/left_pad1"/>
+                          <geom class="pad_box2" name="left/left_pad2"/>
                         </body>
                       </body>
                       <body name="left/left_inner_knuckle"
@@ -170,7 +183,9 @@
                           <joint name="left/right_finger_joint"
                             axis="1 0 0" class="follower" />
                           <geom material="orange" mesh="right_finger" />
-                          <geom class="collision" mesh="right_finger" />
+                          <!-- <geom class="collision" mesh="right_finger" /> -->
+                          <geom class="pad_box1" name="left/right_pad1"/>
+                          <geom class="pad_box2" name="left/right_pad2"/>
                         </body>
                       </body>
                       <body name="left/right_inner_knuckle"
@@ -380,7 +395,7 @@
     <general name="left/joint5" joint="left/joint5" class="size2" />
     <general name="left/joint6" joint="left/joint6" class="size3" ctrlrange="-1.69297 3.14159" />
     <general name="left/joint7" joint="left/joint7" class="size3" />
-    <general name="left/gripper" tendon="left/split" forcerange="-50 50" ctrlrange="0 255"
+    <general name="left/gripper" tendon="left/split" forcerange="-5 5" ctrlrange="0 255"
       biastype="affine" gainprm="0.333"
       biasprm="0 -100 -10" />
 
@@ -392,7 +407,7 @@
     <general name="right/joint5" joint="right/joint5" class="size2" />
     <general name="right/joint6" joint="right/joint6" class="size3" ctrlrange="-1.69297 3.14159" />
     <general name="right/joint7" joint="right/joint7" class="size3" />
-    <general name="right/gripper" tendon="right/split" forcerange="-50 50" ctrlrange="0 255"
+    <general name="right/gripper" tendon="right/split" forcerange="-5 5" ctrlrange="0 255"
       biastype="affine" gainprm="0.333"
       biasprm="0 -100 -10" />
   </actuator>
