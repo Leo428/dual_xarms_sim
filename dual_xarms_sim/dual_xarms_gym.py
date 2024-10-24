@@ -20,7 +20,9 @@ _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 # LEFT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
 # RIGHT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
 LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.2, 0.6, 0.3]])
+# LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.2, 0.2, 0], [0.7, 0.6, 0.3]])
+# RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 # _SAMPLING_BOUNDS = np.asarray([[0.25, -0.25], [0.55, 0.25]])
 
 # Define joint names based on the xarm7 structure from your model
@@ -210,10 +212,10 @@ class DualXarmsGymEnv(MujocoGymEnv):
         mujoco.mj_forward(self._model, self._data)
 
         # Reset mocap body to home position.
-        self._data.mocap_pos[0] = self._data.sensor("left/tcp_pos").data
-        self._data.mocap_quat[0] = self._data.sensor("left/tcp_quat").data
-        self._data.mocap_pos[1] = self._data.sensor("right/tcp_pos").data
-        self._data.mocap_quat[1] = self._data.sensor("right/tcp_quat").data
+        # self._data.mocap_pos[0] = self._data.sensor("left/tcp_pos").data
+        # self._data.mocap_quat[0] = self._data.sensor("left/tcp_quat").data
+        # self._data.mocap_pos[1] = self._data.sensor("right/tcp_pos").data
+        # self._data.mocap_quat[1] = self._data.sensor("right/tcp_quat").data
         mujoco.mj_forward(self._model, self._data)
 
         # Sample a new block position.
@@ -268,7 +270,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self._data.mocap_pos[0] = left_npos
 
         left_quat = self._data.mocap_quat[0].copy()
-        left_dquat = R.from_euler("xyz", left_tcp_euler_delta * 0.2)
+        left_dquat = R.from_euler("xyz", left_tcp_euler_delta * np.pi/36)
         left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[0] = left_nquat
 
@@ -276,7 +278,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         right_npos = np.clip(right_pos + right_tcp_pos_delta * self._action_scale[0], *RIGHT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[1] = right_npos
         right_quat = self._data.mocap_quat[1].copy()
-        right_dquat = R.from_euler("xyz", right_tcp_euler_delta * 0.2)
+        right_dquat = R.from_euler("xyz", right_tcp_euler_delta * np.pi/36)
         right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[1] = right_nquat
 

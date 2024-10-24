@@ -19,16 +19,30 @@
   <worldbody>
     <light pos="0 0 5" />
     <geom name="floor" size="1 1 0.01" type="plane" material="grid" />
-    <body name="left/target" pos="-0.35 0.4 .1" quat="0 0.7071068 -0.7071068 0" mocap="true">
-      <geom type="box" size=".03 .03 .03" contype="0" conaffinity="0" rgba=".6 .3 .3 .25" />
+    <body name="left/target" pos="-0.35 0.4 .2" quat="0 0.7071068 -0.7071068 0" mocap="true">
+      <geom type="box" size=".03 .03 .03" contype="0" conaffinity="0" rgba=".6 .3 .3 .05" />
     </body>
-    <body name="right/target" pos="0.35 0.4 .1" quat="0 0.7071068 -0.7071068 0" mocap="true">
-      <geom type="box" size=".03 .03 .03" contype="0" conaffinity="0" rgba=".3 .3 .6 .25" />
+    <body name="right/target" pos="0.35 0.4 .2" quat="0 0.7071068 -0.7071068 0" mocap="true">
+    <!-- <body name="right/target" pos="0.35 0.5 .35" quat="-0.5 0.5 -0.5 -0.5" mocap="true"> -->
+      <geom type="box" size=".03 .03 .03" contype="0" conaffinity="0" rgba=".3 .3 .6 .05" />
     </body>
-    <body name="block" pos="0 0.4 .02">
+    <!-- <body name="block" pos="0 0.4 .02">
       <freejoint name="block" />
-      <geom name="block" type="box" size=".03 .03 .03" mass="0.1" rgba=".6 .3 .6 1" />
+      <geom name="block" type="box" size=".06 .015 .025" rgba=".6 .3 .6 1"
+        mass="0.1" friction="0.5" priority="1" />
+    </body> -->
+    <!-- <body name="block" pos="0 0.4 .02">
+      <joint name="red_box_joint" type="free" frictionloss="0.01" />
+      <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002" />
+      <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.02 0.02 0.02" type="box" name="block" rgba="1 0 0 1" />
+    </body> -->
+    <body name="block" pos="0 0.4 0.02">
+      <joint name="red_box_joint" type="free" frictionloss="0.01" />
+      <!-- Updated inertial properties to reflect new dimensions -->
+      <inertial pos="0 0 0" mass="0.05" diaginertia="0.00013 0.00024 0.00024" />
+      <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.1 0.02 0.04" type="box" name="block" rgba=".6 .3 .6 1" />
     </body>
+  
   </worldbody>
 
   <sensor>
