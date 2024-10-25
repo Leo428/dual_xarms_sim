@@ -47,7 +47,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self,
         action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
-        control_freq: int = 50, # 10 Hz
+        control_freq: int = 20, # 10 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(),
@@ -55,7 +55,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         image_obs: bool = False,
     ):
         self._action_scale = action_scale
-        self.gym_rate = RateLimiter(frequency=10.0)
+        self.gym_rate = RateLimiter(frequency=control_freq)
 
         super().__init__(
             xml_path=_XML_PATH,
@@ -142,7 +142,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         # self._viewer.render(self.render_mode)
         if self.render_mode == "human":
             import mujoco.viewer
-            self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=False, show_right_ui=False)
+            self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
 
         self.ik_configuration = mink.Configuration(self.model)
         # Task definitions using mink library
@@ -266,19 +266,23 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         # # Set the mocap position.
         left_pos = self._data.mocap_pos[0].copy()
-        left_npos = np.clip(left_pos + left_tcp_pos_delta * self._action_scale[0], *LEFT_CARTESIAN_BOUNDS)
+        # left_npos = np.clip(left_pos + left_tcp_pos_delta * self._action_scale[0], *LEFT_CARTESIAN_BOUNDS)
+        left_npos = np.clip(left_pos + left_tcp_pos_delta, *LEFT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[0] = left_npos
 
         left_quat = self._data.mocap_quat[0].copy()
-        left_dquat = R.from_euler("xyz", left_tcp_euler_delta * np.pi/36)
+        left_dquat = R.from_euler("xyz", left_tcp_euler_delta)
+        # left_dquat = R.from_euler("xyz", left_tcp_euler_delta * np.pi/36)
         left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[0] = left_nquat
 
         right_pos = self._data.mocap_pos[1].copy()
-        right_npos = np.clip(right_pos + right_tcp_pos_delta * self._action_scale[0], *RIGHT_CARTESIAN_BOUNDS)
+        # right_npos = np.clip(right_pos + right_tcp_pos_delta * self._action_scale[0], *RIGHT_CARTESIAN_BOUNDS)
+        right_npos = np.clip(right_pos + right_tcp_pos_delta, *RIGHT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[1] = right_npos
         right_quat = self._data.mocap_quat[1].copy()
-        right_dquat = R.from_euler("xyz", right_tcp_euler_delta * np.pi/36)
+        # right_dquat = R.from_euler("xyz", right_tcp_euler_delta * np.pi/36)
+        right_dquat = R.from_euler("xyz", right_tcp_euler_delta)
         right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[1] = right_nquat
 
@@ -385,6 +389,18 @@ import logging
 
 # Set the logging level to ERROR, which ignores WARNING messages
 # logging.basicConfig(level=logging.ERROR)
+
+def scale_offset_to_action(offset, max_offset=0.01):
+    norm = np.linalg.norm(offset)
+    if norm > 0:
+        scaled_offset = offset / max_offset
+        scaled_norm = np.linalg.norm(scaled_offset)
+        if scaled_norm > 1:
+            # Normalize to have norm 1
+            scaled_offset = scaled_offset / scaled_norm
+        return scaled_offset
+    else:
+        return np.zeros_like(offset)
 
 if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
