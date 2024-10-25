@@ -19,9 +19,9 @@ _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 
 # LEFT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
 # RIGHT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
-LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.2, 0.6, 0.3]])
+LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
-RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.2, 0.2, 0], [0.7, 0.6, 0.3]])
+RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
 # RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 # _SAMPLING_BOUNDS = np.asarray([[0.25, -0.25], [0.55, 0.25]])
 
@@ -47,7 +47,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self,
         action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
-        control_freq: int = 10, # 10 Hz
+        control_freq: int = 50, # 10 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(),
