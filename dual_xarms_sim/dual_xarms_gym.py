@@ -7,6 +7,7 @@ import gymnasium as gym
 import mujoco
 import numpy as np
 from gymnasium import spaces
+from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 import mink
 from loop_rate_limiters import RateLimiter
 from scipy.spatial.transform import Rotation as R
@@ -17,8 +18,8 @@ from dual_xarms_sim.ik_controller import IKController
 _HERE = Path(__file__).parent
 _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 
-# LEFT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
-# RIGHT_HOME = np.asarray((0, -0.785, 0, -2.35, 0, 1.57, np.pi / 4))
+LEFT_HOME = np.asarray([-0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
+RIGHT_HOME = np.asarray([0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
 LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
@@ -37,7 +38,7 @@ _JOINT_NAMES = [
 ]
 # All joints on xarm7 are assumed to have similar velocity limits
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
-_HOME_JOINT_QPOS = np.array([0, -0.247, 0, 0.909, 0, 1.15644, 0, 0, -0.247, 0, 0.909, 0, 1.15644, 0])
+_HOME_JOINT_QPOS = np.array([0, -0.25844, -0.00013, 1.03062, -0.00006, 1.31739, 0, 0, -0.25844, -0.00013, 1.03062, 0.00006, 1.31739, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
 
 class DualXarmsGymEnv(MujocoGymEnv):
@@ -52,7 +53,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
-        image_obs: bool = False,
+        image_obs: bool = True,
     ):
         self._action_scale = action_scale
         self.gym_rate = RateLimiter(frequency=control_freq)
@@ -75,8 +76,8 @@ class DualXarmsGymEnv(MujocoGymEnv):
         }
 
         self.render_mode = render_mode
-        # self.camera_id = (0, 1)
-        # self.image_obs = image_obs
+        self.camera_id = (0, 1)
+        self.image_obs = image_obs
 
         joint_names = []
         self.velocity_limits = {}
@@ -132,17 +133,17 @@ class DualXarmsGymEnv(MujocoGymEnv):
             dtype=np.float32,
         )
 
-        # NOTE: gymnasium is used here since MujocoRenderer is not available in gym. It
-        # is possible to add a similar viewer feature with gym, but that can be a future TODO
-        # from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
-        # self._viewer = MujocoRenderer(
-        #     self.model,
-        #     self.data,
-        # )
         # self._viewer.render(self.render_mode)
         if self.render_mode == "human":
             import mujoco.viewer
             self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
+
+        # TODO: implement off screen rendering
+        self._renderer = MujocoRenderer(
+            self.model,
+            self.data,
+        )
+        self._viewer.render(self.render_mode)
 
         self.ik_configuration = mink.Configuration(self.model)
         # Task definitions using mink library
@@ -212,10 +213,8 @@ class DualXarmsGymEnv(MujocoGymEnv):
         mujoco.mj_forward(self._model, self._data)
 
         # Reset mocap body to home position.
-        # self._data.mocap_pos[0] = self._data.sensor("left/tcp_pos").data
-        # self._data.mocap_quat[0] = self._data.sensor("left/tcp_quat").data
-        # self._data.mocap_pos[1] = self._data.sensor("right/tcp_pos").data
-        # self._data.mocap_quat[1] = self._data.sensor("right/tcp_quat").data
+        self._data.mocap_pos[0], self._data.mocap_quat[0] = LEFT_HOME[:3], LEFT_HOME[3:]
+        self._data.mocap_pos[1], self._data.mocap_quat[1] = RIGHT_HOME[:3], RIGHT_HOME[3:]
         mujoco.mj_forward(self._model, self._data)
 
         # Sample a new block position.
@@ -345,9 +344,9 @@ class DualXarmsGymEnv(MujocoGymEnv):
                 self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32
             )
 
-        # if self.image_obs:
-        #     obs["images"] = {}
-        #     obs["images"]["front"], obs["images"]["wrist"] = self.render()
+        if self.image_obs:
+            obs["images"] = {}
+            obs["images"]["front"], obs["images"]["wrist"] = self.render()
         # else:
         #     block_pos = self._data.sensor("block_pos").data.astype(np.float32)
         #     obs["state"]["block_pos"] = block_pos
