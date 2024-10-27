@@ -66,11 +66,11 @@
     <default class="pad">
       <geom type="mesh"/>
       <default class="pad_box1">
-        <geom mass="0" type="box" pos="0 -0.029 0.085" size="0.0125 0.002 0.06" friction="1.5 1 0.0001"
+        <geom mass="0" type="box" pos="0 -0.029 0.085" size="0.0125 0.002 0.06" friction="1 0.005 0.0001"
           solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="1 0 0 1"/>
       </default>
       <default class="pad_box2">
-        <geom mass="0" type="box" pos="0 0.029 0.085" size="0.0125 0.002 0.06" friction="1.5 1 0.0001"
+        <geom mass="0" type="box" pos="0 0.029 0.085" size="0.0125 0.002 0.06" friction="1 0.005 0.0001"
           solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="1 0 0 1"/>
       </default>
     </default>
@@ -127,6 +127,8 @@
                     <geom material="gray" mesh="end_tool" />
                     <geom class="collision" mesh="end_tool" />
                     <site name="left/attachment_site" />
+                    <camera name="left/wrist" pos="0.08 0 0.05" quat="0.0616284 0.704416 0.704416 0.0616284"
+                      fovy="58"/>
                     <body name="left/xarm_gripper_base_link" quat="0 0 0 1">
                       <inertial pos="-0.00065489 -0.0018497 0.048028"
                         quat="0.997403 -0.0717512 -0.0061836 0.000477479"
@@ -275,6 +277,8 @@
                     <geom material="gray" mesh="end_tool" />
                     <geom class="collision" mesh="end_tool" />
                     <site name="right/attachment_site" />
+                    <camera name="right/wrist" pos="0.08 0 0.05" quat="0.0616284 0.704416 0.704416 0.0616284"
+                      fovy="58" resolution="224 224" />
                     <body name="right/xarm_gripper_base_link" quat="0 0 0 1">
                       <inertial pos="-0.00065489 -0.0018497 0.048028"
                         quat="0.997403 -0.0717512 -0.0061836 0.000477479"

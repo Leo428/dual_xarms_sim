@@ -51,7 +51,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         control_freq: int = 20, # 10 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
-        render_spec: GymRenderingSpec = GymRenderingSpec(),
+        render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
         image_obs: bool = True,
     ):
@@ -66,7 +66,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
             time_limit=time_limit,
             render_spec=render_spec,
         )
-
         self.metadata = {
             "render_modes": [
                 "human",
@@ -76,7 +75,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         }
 
         self.render_mode = render_mode
-        self.camera_id = (0, 1)
+        self.camera_names = ["left/top", "left/wrist", "right/top", "right/wrist"]
         self.image_obs = image_obs
 
         joint_names = []
@@ -94,36 +93,71 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self._tcp_site_ids = [self._model.site(f"{side}/link_tcp").id for side in ["left", "right"]]
         # self._block_z = self._model.geom("block").size[2]
 
-        self.observation_space = gym.spaces.Dict(
-            {
-                # TODO: add tcp eulers for both sides
-                "state": gym.spaces.Dict(
-                    {
-                        "left/tcp_pos": spaces.Box(
-                            -np.inf, np.inf, shape=(3,), dtype=np.float32
-                        ),
-                        "left/tcp_vel": spaces.Box(
-                            -np.inf, np.inf, shape=(3,), dtype=np.float32
-                        ),
-                        "left/gripper_pos": spaces.Box(
-                            -np.inf, np.inf, shape=(1,), dtype=np.float32
-                        ),
-                        "right/tcp_pos": spaces.Box(
-                            -np.inf, np.inf, shape=(3,), dtype=np.float32
-                        ),
-                        "right/tcp_vel": spaces.Box(
-                            -np.inf, np.inf, shape=(3,), dtype=np.float32
-                        ),
-                        "right/gripper_pos": spaces.Box(
-                            -np.inf, np.inf, shape=(1,), dtype=np.float32
-                        ),
-                        # "block_pos": spaces.Box(
-                        #     -np.inf, np.inf, shape=(3,), dtype=np.float32
-                        # ),
-                    }
-                ),
-            }
-        )
+        self.observation_space = gym.spaces.Dict({
+            "state": gym.spaces.Dict(
+                {
+                    "left/tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/tcp_vel": spaces.Box( # world frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "left/ego_tcp_pose": spaces.Box( # head camera frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "left/wrist_tcp_pose": spaces.Box( # wrist frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/wrist_tcp_vel": spaces.Box( # wrist frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "left/gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "right/tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/tcp_vel": spaces.Box( # world frame
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32 # linear + angular euler
+                    ),
+                    "right/ego_tcp_pose": spaces.Box( # head camera frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "right/wrist_tcp_pose": spaces.Box( # wrist frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/wrist_tcp_vel": spaces.Box( # wrist frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "right/gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    # "block_pose": spaces.Box( # world frame, pos + quat
+                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    # ),
+                    # "block_pose_ego": spaces.Box( # head camera frame, pos + quat
+                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    # ),
+                    # "block_pose_wrist": spaces.Box( # wrist frame, pos + quat
+                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    # ),
+                }
+            ),
+            "images": gym.spaces.Dict(
+                {
+                    "left/top": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "left/wrist": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "right/top": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "right/wrist": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                }
+            )
+        })
 
         # left tcp pos delta, left tcp euler delta, left gripper pos,
         # right tcp pos delta, right tcp euler delta, right gripper pos
@@ -133,17 +167,11 @@ class DualXarmsGymEnv(MujocoGymEnv):
             dtype=np.float32,
         )
 
-        # self._viewer.render(self.render_mode)
         if self.render_mode == "human":
             import mujoco.viewer
             self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
 
-        # TODO: implement off screen rendering
-        self._renderer = MujocoRenderer(
-            self.model,
-            self.data,
-        )
-        self._viewer.render(self.render_mode)
+        self._renderer = mujoco.Renderer(self.model, width=render_spec.width, height=render_spec.height)
 
         self.ik_configuration = mink.Configuration(self.model)
         # Task definitions using mink library
@@ -293,10 +321,10 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         # Set gripper grasp.
         left_g = self._data.ctrl[self._gripper_ctrl_ids[0]] / 255
-        left_dg = action[6] * self._action_scale[1]
+        left_dg = action[6] * 0.1
         left_ng = np.clip(left_g + left_dg, 0.0, 1.0)
         right_g = self._data.ctrl[self._gripper_ctrl_ids[1]] / 255
-        right_dg = action[13] * self._action_scale[1]
+        right_dg = action[13] * 0.1
         right_ng = np.clip(right_g + right_dg, 0.0, 1.0)
         self._data.ctrl[self._gripper_ctrl_ids[0]] = left_ng * 255
         self._data.ctrl[self._gripper_ctrl_ids[1]] = right_ng * 255
@@ -306,14 +334,13 @@ class DualXarmsGymEnv(MujocoGymEnv):
         # terminated = self.time_limit_exceeded()
 
         self.gym_rate.sleep()
-        # return obs, rew, terminated, False, {}
+        return obs, 0, False, False, {}
 
     def render(self):
         rendered_frames = []
-        for cam_id in self.camera_id:
-            rendered_frames.append(
-                self._viewer.render(render_mode="rgb_array", camera_id=cam_id)
-            )
+        for cam_name in self.camera_names:
+            self._renderer.update_scene(self.data, camera=cam_name)
+            rendered_frames.append(self._renderer.render())
         return rendered_frames
 
     # Helper methods.
@@ -346,7 +373,10 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         if self.image_obs:
             obs["images"] = {}
-            obs["images"]["front"], obs["images"]["wrist"] = self.render()
+            images = self.render()
+            for cam_name in self.camera_names:
+                obs["images"][cam_name] = images.pop(0)
+
         # else:
         #     block_pos = self._data.sensor("block_pos").data.astype(np.float32)
         #     obs["state"]["block_pos"] = block_pos
@@ -403,21 +433,27 @@ def scale_offset_to_action(offset, max_offset=0.01):
 
 if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
-    env.reset()
+    obs, _ = env.reset()
+    obses = [obs]
 
-    for i in tqdm(range(100000000)):
+    for i in tqdm(range(1000)):
         action = env.action_space.sample() * 0
         oculus_data = get_controller_data()
 
         if oculus_data is None:
-            env.step(action)
+            obs, _, _, _, _ = env.step(action)
         else:
             action[:3] = np.array([oculus_data["left_dx"], oculus_data["left_dy"], oculus_data["left_dz"]])
             action[3:6] = np.array([oculus_data["left_drx"], oculus_data["left_dry"], oculus_data["left_drz"]])
-            action[6] = oculus_data["left_trigger"]
+            action[6] = oculus_data["left_joystick"][0]
             action[7:10] = np.array([oculus_data["right_dx"], oculus_data["right_dy"], oculus_data["right_dz"]])
             action[10:13] = np.array([oculus_data["right_drx"], oculus_data["right_dry"], oculus_data["right_drz"]])
-            action[13] = oculus_data["right_trigger"]
+            action[13] = oculus_data["right_joystick"][0]
 
             action = np.clip(action, -1, 1)
-            env.step(action)
+            obs, _, _, _, _ = env.step(action)
+
+        obses.append(obs)
+
+    env.ik_controller.stop()
+    env.ik_thread.join()
