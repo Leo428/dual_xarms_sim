@@ -40,8 +40,8 @@ _JOINT_NAMES = [
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
 _HOME_JOINT_QPOS = np.array([0, -0.25844, -0.00013, 1.03062, -0.00006, 1.31739, 0, 0, -0.25844, -0.00013, 1.03062, 0.00006, 1.31739, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
-_MAX_LINEAR_VELOCITY = 0.75 # m/s
-_MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
+_MAX_LINEAR_VELOCITY = 0.5 # m/s
+_MAX_ANGULAR_VELOCITY = np.pi/4 # rad/s
 
 class DualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
