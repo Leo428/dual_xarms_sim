@@ -40,6 +40,8 @@ _JOINT_NAMES = [
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
 _HOME_JOINT_QPOS = np.array([0, -0.25844, -0.00013, 1.03062, -0.00006, 1.31739, 0, 0, -0.25844, -0.00013, 1.03062, 0.00006, 1.31739, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
+_MAX_LINEAR_VELOCITY = 0.5 # m/s
+_MAX_ANGULAR_VELOCITY = np.pi/4 # rad/s
 
 class DualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
@@ -48,13 +50,16 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self,
         action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
-        control_freq: int = 20, # 10 Hz
+        control_freq: int = 10, # 10 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
         image_obs: bool = True,
     ):
+        self.control_freq = control_freq
+        self.MAX_LINEAR_VELOCITY = _MAX_LINEAR_VELOCITY / control_freq
+        self.MAX_ANGULAR_VELOCITY = _MAX_ANGULAR_VELOCITY / control_freq
         self._action_scale = action_scale
         self.gym_rate = RateLimiter(frequency=control_freq)
 
@@ -223,6 +228,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
             model=self._model, data=self._data,
             configuration=self.ik_configuration,
             actuator_ids=self.arm_actuator_ids, dof_ids=self.arm_dof_ids,
+            l_gripper_id=self._gripper_ctrl_ids[0], r_gripper_id=self._gripper_ctrl_ids[1],
             tasks=self.tasks, l_ee_task=self.l_ee_task, r_ee_task=self.r_ee_task,
             ik_solver="quadprog", ik_limits=self.ik_limits,
             ik_max_iters=2, pos_threshold=1e-2, ori_threshold=1e-2,
@@ -293,23 +299,29 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         # # Set the mocap position.
         left_pos = self._data.mocap_pos[0].copy()
-        # left_npos = np.clip(left_pos + left_tcp_pos_delta * self._action_scale[0], *LEFT_CARTESIAN_BOUNDS)
-        left_npos = np.clip(left_pos + left_tcp_pos_delta, *LEFT_CARTESIAN_BOUNDS)
+        left_dpos = self.limit_offset_norm(
+            left_tcp_pos_delta * self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
+        )
+        left_npos = np.clip(left_pos + left_dpos, *LEFT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[0] = left_npos
 
         left_quat = self._data.mocap_quat[0].copy()
-        left_dquat = R.from_euler("xyz", left_tcp_euler_delta)
-        # left_dquat = R.from_euler("xyz", left_tcp_euler_delta * np.pi/36)
+        left_dquat = R.from_euler("xyz", self.limit_offset_norm(
+            left_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
+        )
         left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[0] = left_nquat
 
         right_pos = self._data.mocap_pos[1].copy()
-        # right_npos = np.clip(right_pos + right_tcp_pos_delta * self._action_scale[0], *RIGHT_CARTESIAN_BOUNDS)
-        right_npos = np.clip(right_pos + right_tcp_pos_delta, *RIGHT_CARTESIAN_BOUNDS)
+        right_dpos = self.limit_offset_norm(
+            right_tcp_pos_delta*self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
+        )
+        right_npos = np.clip(right_pos + right_tcp_pos_delta*self.MAX_LINEAR_VELOCITY, *RIGHT_CARTESIAN_BOUNDS)
         self._data.mocap_pos[1] = right_npos
         right_quat = self._data.mocap_quat[1].copy()
-        # right_dquat = R.from_euler("xyz", right_tcp_euler_delta * np.pi/36)
-        right_dquat = R.from_euler("xyz", right_tcp_euler_delta)
+        right_dquat = R.from_euler("xyz", self.limit_offset_norm(
+            right_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
+        )
         right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
         self._data.mocap_quat[1] = right_nquat
 
@@ -399,6 +411,12 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.ik_thread.join()
         super().close()
 
+    def limit_offset_norm(self, offset, max_offset):
+        # scale offset such that the max norm of offset is max_offset
+        norm = np.linalg.norm(offset)
+        if norm > max_offset:
+            offset = offset / norm * max_offset
+        return offset
 
 import requests
 
@@ -419,24 +437,14 @@ import logging
 # Set the logging level to ERROR, which ignores WARNING messages
 # logging.basicConfig(level=logging.ERROR)
 
-def scale_offset_to_action(offset, max_offset=0.01):
-    norm = np.linalg.norm(offset)
-    if norm > 0:
-        scaled_offset = offset / max_offset
-        scaled_norm = np.linalg.norm(scaled_offset)
-        if scaled_norm > 1:
-            # Normalize to have norm 1
-            scaled_offset = scaled_offset / scaled_norm
-        return scaled_offset
-    else:
-        return np.zeros_like(offset)
+
 
 if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
     obs, _ = env.reset()
     obses = [obs]
 
-    for i in tqdm(range(1000)):
+    for i in tqdm(range(100000)):
         action = env.action_space.sample() * 0
         oculus_data = get_controller_data()
 
@@ -444,16 +452,24 @@ if __name__ == "__main__":
             obs, _, _, _, _ = env.step(action)
         else:
             action[:3] = np.array([oculus_data["left_dx"], oculus_data["left_dy"], oculus_data["left_dz"]])
+            # scale between [-1, 1]
+            action[:3] = action[:3] / env.MAX_LINEAR_VELOCITY
             action[3:6] = np.array([oculus_data["left_drx"], oculus_data["left_dry"], oculus_data["left_drz"]])
+            action[3:6] = action[3:6] / env.MAX_ANGULAR_VELOCITY
             action[6] = oculus_data["left_joystick"][0]
             action[7:10] = np.array([oculus_data["right_dx"], oculus_data["right_dy"], oculus_data["right_dz"]])
+            action[7:10] = action[7:10] / env.MAX_LINEAR_VELOCITY
             action[10:13] = np.array([oculus_data["right_drx"], oculus_data["right_dry"], oculus_data["right_drz"]])
+            action[10:13] = action[10:13] / env.MAX_ANGULAR_VELOCITY
             action[13] = oculus_data["right_joystick"][0]
 
             action = np.clip(action, -1, 1)
             obs, _, _, _, _ = env.step(action)
 
-        obses.append(obs)
+    #     obses.append(obs)
 
+    # with open("obses.npy", "wb") as f:
+    #     np.save(f, obses, allow_pickle=True)
+    env.ik_controller.human_viewer.close()
     env.ik_controller.stop()
     env.ik_thread.join()

@@ -5,7 +5,7 @@ import mujoco
 
 class IKController:
     def __init__(self, model, data, configuration, actuator_ids, dof_ids,
-                    tasks, l_ee_task, r_ee_task,
+                    tasks, l_ee_task, r_ee_task, l_gripper_id, r_gripper_id,
                     ik_solver, ik_limits, ik_max_iters=2,
                     pos_threshold = 1e-2, ori_threshold = 1e-2, damping=1e-5, rate=None, human_viewer=None):
         self.model = model
@@ -16,6 +16,8 @@ class IKController:
         self.tasks = tasks
         self.l_ee_task = l_ee_task
         self.r_ee_task = r_ee_task
+        self.l_gripper_id = l_gripper_id
+        self.r_gripper_id = r_gripper_id
         self.ik_solver = ik_solver
         self.ik_limits = ik_limits
         self.ik_max_iters = ik_max_iters
@@ -30,6 +32,10 @@ class IKController:
     def set_targets(self, l_target, r_target):
         self.l_ee_task.set_target(l_target)
         self.r_ee_task.set_target(r_target)
+    
+    def set_gripper_targets(self, l_target, r_target):
+        self.data.ctrl[self.l_gripper_id] = l_target
+        self.data.ctrl[self.r_gripper_id] = r_target
 
     def run_ik(self):
         self.running = True
@@ -59,4 +65,5 @@ class IKController:
             self.rate.sleep()
 
     def stop(self):
-        self.running = False
+        with self.lock:
+            self.running = False
