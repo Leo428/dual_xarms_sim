@@ -2,9 +2,6 @@
   <compiler angle="radian" autolimits="true" meshdir="assets" />
   <option integrator="implicitfast" />
   <option cone="elliptic" impratio="10" />
-  <!-- <option>
-    <flag multiccd = "enable" />
-  </option> -->
 
   <asset>
     <material name="white" rgba="1 1 1 1" />
@@ -33,7 +30,7 @@
   <default>
     <default class="xarm7">
       <geom type="mesh" material="white" />
-      <joint axis="0 0 1" range="-6.28319 6.28319" frictionloss="1" />
+      <joint axis="0 0 1" range="-6.28319 6.28319" armature="0.1" />
       <general biastype="affine" ctrlrange="-6.28319 6.28319" />
       <default class="size1">
         <joint damping="10" />
@@ -48,7 +45,7 @@
         <general gainprm="800" biasprm="0 -800 -80" forcerange="-20 20" />
       </default>
       <default class="spring_link">
-        <joint range="0 0.7" armature="0.1" stiffness="0.05" springref="2.62" damping="0.00125" />
+        <joint range="0 0.7" armature="0.1" stiffness="0.2" springref="2.62" damping="0.00125" />
       </default>
       <default class="driver">
         <!-- <joint range="0 0.85" armature="0.005" damping="0.1" solreflimit="0.005 1" /> -->
@@ -69,20 +66,20 @@
     <default class="pad">
       <geom type="mesh"/>
       <default class="pad_box1">
-        <geom mass="0" type="box" pos="0 -0.028 0.075" size="0.0125 0.003 0.05" friction="0.8 0.2"
-          condim="4" solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="1 0 0 1"/>
+        <geom mass="0" type="box" pos="0 -0.0265 0.0775" size="0.0125 0.003 0.0525" friction="0.7"
+          solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="1 0 0 1"/>
       </default>
       <default class="pad_box2">
-        <geom mass="0" type="box" pos="0 0.028 0.075" size="0.0125 0.003 0.05" friction="0.8 0.2"
-          condim="4" solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="1 0 0 1"/>
+        <geom mass="0" type="box" pos="0 0.0265 0.0775" size="0.0125 0.003 0.0525" friction="0.7"
+          solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="1 0 0 1"/>
       </default>
       <default class="pad_box3">
-        <geom mass="0" type="box" pos="0 -0.028 0.135" size="0.0125 0.003 0.01" friction="0.9 0.3"
-          condim="4" solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="0 1 0 1"/>
+        <geom mass="0" type="box" pos="0 -0.0265 0.1375" size="0.0125 0.003 0.0075" friction="0.8"
+          solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="0 1 0 1"/>
       </default>
       <default class="pad_box4">
-        <geom mass="0" type="box" pos="0 0.028 0.135" size="0.0125 0.003 0.01" friction="0.9 0.3"
-          condim="4" solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="0 1 0 1"/>
+        <geom mass="0" type="box" pos="0 0.0265 0.1375" size="0.0125 0.003 0.0075" friction="0.8"
+          solimp="0.95 0.99 0.001" solref="0.02 1" priority="1" rgba="0 1 0 1"/>
       </default>
     </default>
   </default>
@@ -438,7 +435,7 @@
     <general name="left/joint5" joint="left/joint5" class="size2" />
     <general name="left/joint6" joint="left/joint6" class="size3" ctrlrange="-1.69297 3.14159" />
     <general name="left/joint7" joint="left/joint7" class="size3" />
-    <general name="left/gripper" tendon="left/split" forcerange="-10 10" ctrlrange="0 255"
+    <general name="left/gripper" tendon="left/split" forcerange="-20 20" ctrlrange="0 255"
       biastype="affine" gainprm="0.333 0 0"
       biasprm="0 -100 -10" />
 
@@ -450,7 +447,7 @@
     <general name="right/joint5" joint="right/joint5" class="size2" />
     <general name="right/joint6" joint="right/joint6" class="size3" ctrlrange="-1.69297 3.14159" />
     <general name="right/joint7" joint="right/joint7" class="size3" />
-    <general name="right/gripper" tendon="right/split" forcerange="-10 10" ctrlrange="0 255"
+    <general name="right/gripper" tendon="right/split" forcerange="-20 20" ctrlrange="0 255"
       biastype="affine" gainprm="0.333 0 0"
       biasprm="0 -100 -10" />
   </actuator>
@@ -486,9 +483,20 @@
     <framepos name="left/tcp_pos" objtype="site" objname="left/link_tcp" />
     <framequat name="left/tcp_quat" objtype="site" objname="left/link_tcp" />
     <framelinvel name="left/tcp_vel" objtype="site" objname="left/link_tcp" />
+    <frameangvel name="left/tcp_angvel" objtype="site" objname="left/link_tcp" />
     <framepos name="right/tcp_pos" objtype="site" objname="right/link_tcp" />
     <framequat name="right/tcp_quat" objtype="site" objname="right/link_tcp" />
     <framelinvel name="right/tcp_vel" objtype="site" objname="right/link_tcp" />
+    <frameangvel name="right/tcp_angvel" objtype="site" objname="right/link_tcp" />
+
+    <framepos name="left/ego_tcp_pos" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
+    <framequat name="left/ego_tcp_quat" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
+    <framelinvel name="left/ego_tcp_vel" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
+    <frameangvel name="left/ego_tcp_angvel" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
+    <framepos name="right/ego_tcp_pos" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
+    <framequat name="right/ego_tcp_quat" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
+    <framelinvel name="right/ego_tcp_vel" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
+    <frameangvel name="right/ego_tcp_angvel" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
   </sensor>
 
   <!-- <keyframe>

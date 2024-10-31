@@ -24,7 +24,7 @@ LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
 # RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
-# _SAMPLING_BOUNDS = np.asarray([[0.25, -0.25], [0.55, 0.25]])
+_SAMPLING_BOUNDS = np.asarray([[0, 0.3], [0.2, 0.5]])
 
 # Define joint names based on the xarm7 structure from your model
 _JOINT_NAMES = [
@@ -40,8 +40,8 @@ _JOINT_NAMES = [
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
 _HOME_JOINT_QPOS = np.array([0, -0.25844, -0.00013, 1.03062, -0.00006, 1.31739, 0, 0, -0.25844, -0.00013, 1.03062, 0.00006, 1.31739, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
-_MAX_LINEAR_VELOCITY = 0.5 # m/s
-_MAX_ANGULAR_VELOCITY = np.pi/4 # rad/s
+_MAX_LINEAR_VELOCITY = 0.75 # m/s
+_MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
 
 class DualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
@@ -113,12 +113,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
                     "left/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
                         -np.inf, np.inf, shape=(6,), dtype=np.float32
                     ),
-                    "left/wrist_tcp_pose": spaces.Box( # wrist frame, pos + quat
-                        -np.inf, np.inf, shape=(7,), dtype=np.float32
-                    ),
-                    "left/wrist_tcp_vel": spaces.Box( # wrist frame, linear + angular euler
-                        -np.inf, np.inf, shape=(6,), dtype=np.float32
-                    ),
                     "left/gripper_pos": spaces.Box(
                         -np.inf, np.inf, shape=(1,), dtype=np.float32
                     ),
@@ -132,12 +126,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
                         -np.inf, np.inf, shape=(7,), dtype=np.float32
                     ),
                     "right/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
-                        -np.inf, np.inf, shape=(6,), dtype=np.float32
-                    ),
-                    "right/wrist_tcp_pose": spaces.Box( # wrist frame, pos + quat
-                        -np.inf, np.inf, shape=(7,), dtype=np.float32
-                    ),
-                    "right/wrist_tcp_vel": spaces.Box( # wrist frame, linear + angular euler
                         -np.inf, np.inf, shape=(6,), dtype=np.float32
                     ),
                     "right/gripper_pos": spaces.Box(
@@ -228,7 +216,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
             model=self._model, data=self._data,
             configuration=self.ik_configuration,
             actuator_ids=self.arm_actuator_ids, dof_ids=self.arm_dof_ids,
-            l_gripper_id=self._gripper_ctrl_ids[0], r_gripper_id=self._gripper_ctrl_ids[1],
             tasks=self.tasks, l_ee_task=self.l_ee_task, r_ee_task=self.r_ee_task,
             ik_solver="quadprog", ik_limits=self.ik_limits,
             ik_max_iters=2, pos_threshold=1e-2, ori_threshold=1e-2,
@@ -252,20 +239,15 @@ class DualXarmsGymEnv(MujocoGymEnv):
         mujoco.mj_forward(self._model, self._data)
 
         # Sample a new block position.
-        # block_xy = np.random.uniform(*_SAMPLING_BOUNDS)
-        # self._data.jnt("block").qpos[:3] = (*block_xy, self._block_z)
-        # mujoco.mj_forward(self._model, self._data)
-
-        # Cache the initial block height.
-        # self._z_init = self._data.sensor("block_pos").data[2]
-        # self._z_success = self._z_init + 0.2
+        block_xy = np.random.uniform(*_SAMPLING_BOUNDS)
+        self._data.jnt("block").qpos[:3] = (*block_xy, 0.02)
+        mujoco.mj_forward(self._model, self._data)
 
         with self.ik_controller.lock:
             self.ik_configuration.update(self._data.qpos)
             self.posture_task.set_target_from_configuration(self.ik_configuration)
             self.ik_controller.set_targets(
-                mink.SE3.from_mocap_name(self.model, self.data, "left/target"),
-                mink.SE3.from_mocap_name(self.model, self.data, "right/target"),
+                LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
             )
             if not self.ik_controller.running:
                 self.ik_thread.start()
@@ -292,10 +274,8 @@ class DualXarmsGymEnv(MujocoGymEnv):
         """
         left_tcp_pos_delta = action[:3]
         left_tcp_euler_delta = action[3:6]
-        left_gripper_pos = action[6]
         right_tcp_pos_delta = action[7:10]
         right_tcp_euler_delta = action[10:13]
-        right_gripper_pos = action[13]
 
         # # Set the mocap position.
         left_pos = self._data.mocap_pos[0].copy()
@@ -303,33 +283,25 @@ class DualXarmsGymEnv(MujocoGymEnv):
             left_tcp_pos_delta * self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
         )
         left_npos = np.clip(left_pos + left_dpos, *LEFT_CARTESIAN_BOUNDS)
-        self._data.mocap_pos[0] = left_npos
 
         left_quat = self._data.mocap_quat[0].copy()
         left_dquat = R.from_euler("xyz", self.limit_offset_norm(
             left_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
         )
         left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
-        self._data.mocap_quat[0] = left_nquat
 
         right_pos = self._data.mocap_pos[1].copy()
         right_dpos = self.limit_offset_norm(
             right_tcp_pos_delta*self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
         )
-        right_npos = np.clip(right_pos + right_tcp_pos_delta*self.MAX_LINEAR_VELOCITY, *RIGHT_CARTESIAN_BOUNDS)
-        self._data.mocap_pos[1] = right_npos
+        right_npos = np.clip(right_pos + right_dpos, *RIGHT_CARTESIAN_BOUNDS)
         right_quat = self._data.mocap_quat[1].copy()
         right_dquat = R.from_euler("xyz", self.limit_offset_norm(
             right_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
         )
         right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
-        self._data.mocap_quat[1] = right_nquat
 
-        # Update task targets based on current mocap positions
-        self.ik_controller.set_targets(
-            mink.SE3.from_mocap_name(self._model, self._data, "left/target"),
-            mink.SE3.from_mocap_name(self._model, self._data, "right/target")
-        )
+        self.ik_controller.set_targets(left_npos, left_nquat, right_npos, right_nquat)
 
         # Set gripper grasp.
         left_g = self._data.ctrl[self._gripper_ctrl_ids[0]] / 255
@@ -355,33 +327,35 @@ class DualXarmsGymEnv(MujocoGymEnv):
             rendered_frames.append(self._renderer.render())
         return rendered_frames
 
-    # Helper methods.
-
     def _compute_observation(self) -> dict:
+        # IMPORTANT NOTE:
+        # in observation, the quat from mujoco is scalar first, but we should keep it scalar last
         obs = {}
         obs["state"] = {}
 
         with self.ik_controller.lock:
-            # TODO: add tcp eulers for both sides
-            tcp_pos = self._data.sensor("left/tcp_pos").data
-            obs["state"]["left/tcp_pos"] = tcp_pos.astype(np.float32)
-            tcp_quat = self._data.sensor("left/tcp_quat").data
-            # obs["state"]["left/tcp_euler"] = tcp_quat.astype(np.float32)
-            tcp_vel = self._data.sensor("left/tcp_vel").data
-            obs["state"]["left/tcp_vel"] = tcp_vel.astype(np.float32)
-            obs["state"]["left/gripper_pos"] = np.array(
-                self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32
-            )
+            for side in ["left", "right"]:
+                # in world frame
+                tcp_pos = self._data.sensor(f"{side}/tcp_pos").data
+                tcp_quat = np.roll(self._data.sensor(f"{side}/tcp_quat").data, -1)
+                obs["state"][f"{side}/tcp_pose"] = np.concatenate([tcp_pos, tcp_quat]).astype(np.float32)
+                tcp_vel = self._data.sensor(f"{side}/tcp_vel").data
+                tcp_angvel = self._data.sensor(f"{side}/tcp_angvel").data
+                obs["state"][f"{side}/tcp_vel"] = np.concatenate([tcp_vel, tcp_angvel]).astype(np.float32)
 
-            tcp_pos = self._data.sensor("right/tcp_pos").data
-            obs["state"]["right/tcp_pos"] = tcp_pos.astype(np.float32)
-            tcp_quat = self._data.sensor("right/tcp_quat").data
-            # obs["state"]["right/tcp_euler"] = tcp_quat.astype(np.float32)
-            tcp_vel = self._data.sensor("right/tcp_vel").data
-            obs["state"]["right/tcp_vel"] = tcp_vel.astype(np.float32)
+                # in head camera frame
+                ego_tcp_pos = self._data.sensor(f"{side}/ego_tcp_pos").data
+                ego_tcp_quat = np.roll(self._data.sensor(f"{side}/ego_tcp_quat").data, -1)
+                obs["state"][f"{side}/ego_tcp_pose"] = np.concatenate([ego_tcp_pos, ego_tcp_quat]).astype(np.float32)
+                ego_tcp_vel = self._data.sensor(f"{side}/ego_tcp_vel").data
+                ego_tcp_angvel = self._data.sensor(f"{side}/ego_tcp_angvel").data
+                obs["state"][f"{side}/ego_tcp_vel"] = np.concatenate([ego_tcp_vel, ego_tcp_angvel]).astype(np.float32)
+
+            # gripper pos
+            obs["state"]["left/gripper_pos"] = np.array(
+                self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32)
             obs["state"]["right/gripper_pos"] = np.array(
-                self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32
-            )
+                self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32)
 
         if self.image_obs:
             obs["images"] = {}
@@ -407,6 +381,8 @@ class DualXarmsGymEnv(MujocoGymEnv):
         return 0
 
     def close(self):
+        if self.render_mode == "human":
+            self._viewer.close()
         self.ik_controller.stop()
         self.ik_thread.join()
         super().close()
@@ -418,58 +394,28 @@ class DualXarmsGymEnv(MujocoGymEnv):
             offset = offset / norm * max_offset
         return offset
 
-import requests
-
-def get_controller_data():
-    url = f"http://127.0.0.1:8000/oculus/data"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raises an HTTPError for bad responses
-        velocity_data = response.json()
-        return velocity_data
-    except Exception as e:
-        print(f"Failed to get controller data due to: {e}")
-        return None
-
 from tqdm import tqdm
-import logging
-
-# Set the logging level to ERROR, which ignores WARNING messages
-# logging.basicConfig(level=logging.ERROR)
-
-
 
 if __name__ == "__main__":
     env = DualXarmsGymEnv(render_mode="human")
+    from dual_xarms_sim.relative_frame import RelativeFrame
+    from dual_xarms_sim.oculus_intervention import OculusIntervention
+
+    env = OculusIntervention(env, freq=10)
+    env = RelativeFrame(env)
+
     obs, _ = env.reset()
     obses = [obs]
 
     for i in tqdm(range(100000)):
         action = env.action_space.sample() * 0
-        oculus_data = get_controller_data()
-
-        if oculus_data is None:
-            obs, _, _, _, _ = env.step(action)
-        else:
-            action[:3] = np.array([oculus_data["left_dx"], oculus_data["left_dy"], oculus_data["left_dz"]])
-            # scale between [-1, 1]
-            action[:3] = action[:3] / env.MAX_LINEAR_VELOCITY
-            action[3:6] = np.array([oculus_data["left_drx"], oculus_data["left_dry"], oculus_data["left_drz"]])
-            action[3:6] = action[3:6] / env.MAX_ANGULAR_VELOCITY
-            action[6] = oculus_data["left_joystick"][0]
-            action[7:10] = np.array([oculus_data["right_dx"], oculus_data["right_dy"], oculus_data["right_dz"]])
-            action[7:10] = action[7:10] / env.MAX_LINEAR_VELOCITY
-            action[10:13] = np.array([oculus_data["right_drx"], oculus_data["right_dry"], oculus_data["right_drz"]])
-            action[10:13] = action[10:13] / env.MAX_ANGULAR_VELOCITY
-            action[13] = oculus_data["right_joystick"][0]
-
-            action = np.clip(action, -1, 1)
-            obs, _, _, _, _ = env.step(action)
+        obs, _, _, _, _ = env.step(action)
 
     #     obses.append(obs)
 
     # with open("obses.npy", "wb") as f:
     #     np.save(f, obses, allow_pickle=True)
+
     env.ik_controller.human_viewer.close()
     env.ik_controller.stop()
     env.ik_thread.join()

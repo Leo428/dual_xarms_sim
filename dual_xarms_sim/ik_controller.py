@@ -5,7 +5,7 @@ import mujoco
 
 class IKController:
     def __init__(self, model, data, configuration, actuator_ids, dof_ids,
-                    tasks, l_ee_task, r_ee_task, l_gripper_id, r_gripper_id,
+                    tasks, l_ee_task, r_ee_task,
                     ik_solver, ik_limits, ik_max_iters=2,
                     pos_threshold = 1e-2, ori_threshold = 1e-2, damping=1e-5, rate=None, human_viewer=None):
         self.model = model
@@ -16,8 +16,6 @@ class IKController:
         self.tasks = tasks
         self.l_ee_task = l_ee_task
         self.r_ee_task = r_ee_task
-        self.l_gripper_id = l_gripper_id
-        self.r_gripper_id = r_gripper_id
         self.ik_solver = ik_solver
         self.ik_limits = ik_limits
         self.ik_max_iters = ik_max_iters
@@ -29,13 +27,11 @@ class IKController:
         self.running = False
         self.lock = threading.Lock()  # Lock for thread-safe operations
 
-    def set_targets(self, l_target, r_target):
-        self.l_ee_task.set_target(l_target)
-        self.r_ee_task.set_target(r_target)
-    
-    def set_gripper_targets(self, l_target, r_target):
-        self.data.ctrl[self.l_gripper_id] = l_target
-        self.data.ctrl[self.r_gripper_id] = r_target
+    def set_targets(self, l_pos, l_quat, r_pos, r_quat):
+        self.data.mocap_pos[0], self.data.mocap_quat[0] = l_pos, l_quat
+        self.data.mocap_pos[1], self.data.mocap_quat[1] = r_pos, r_quat
+        self.l_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "left/target"))
+        self.r_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "right/target"))
 
     def run_ik(self):
         self.running = True
@@ -57,6 +53,7 @@ class IKController:
                     if np.linalg.norm(l_err[:3]) <= self.pos_threshold and np.linalg.norm(l_err[3:]) <= self.ori_threshold \
                         and np.linalg.norm(r_err[:3]) <= self.pos_threshold and np.linalg.norm(r_err[3:]) <= self.ori_threshold:
                         break
+
                 self.data.ctrl[self.actuator_ids] = self.configuration.q[self.dof_ids]
                 mujoco.mj_step(self.model, self.data)
 

@@ -478,7 +478,7 @@
       <general class="2f85" name="right/gripper" tendon="right/split" 
         forcerange="-10 10" ctrlrange="0 255" gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
     </actuator>
-  
+
     <sensor>
       <force name="left/wrist_force" site="left/attachment_site" />
       <force name="right/wrist_force" site="right/attachment_site" />
