@@ -9,12 +9,12 @@ from dual_xarms_sim.utils.network import get_oculus_reading
 
 if __name__ == "__main__":
     task_name = "sim_dual_xarms_cube_handover"
-    env = DualXarmsGymEnv(render_mode="human")
-    env = OculusIntervention(env, freq=10)
+    env = DualXarmsGymEnv(control_freq=20, render_mode="human")
+    env = OculusIntervention(env, freq=20)
     env = RelativeFrame(env)
 
-    episodes_progress_bar = tqdm(range(10), desc="Episodes")
-    step_progress_bar = tqdm(range(1000), desc="Steps")
+    episodes_progress_bar = tqdm(range(13), desc="Episodes")
+    step_progress_bar = tqdm(range(2000), desc="Steps")
 
     while episodes_progress_bar.n < episodes_progress_bar.total:
         try:
@@ -30,29 +30,35 @@ if __name__ == "__main__":
                 step_progress_bar.reset()
                 obs, info = env.reset()
 
+                truncated = False
                 done = False
-                obses, actions, rews, dones, truncated, infos = [], [], [], [], [], []
+                obses, actions, rews, dones, truncateds, infos = [], [], [], [], [], []
 
-                while not done:
+                while not truncated:
                     action = np.zeros(env.action_space.shape)
-                    obs, rew, done, _, info = env.step(action)
+                    obs, rew, done, truncated, info = env.step(action)
+                    if "intervene_action" in info:
+                        action = info["intervene_action"]
 
                     obses.append(obs)
                     actions.append(action)
                     rews.append(rew)
                     dones.append(done)
-                    truncated.append(False)
+                    truncateds.append(truncated)
                     infos.append(info)
 
                     step_progress_bar.update(1)
+                    if done:
+                        step_progress_bar.desc = "Task Completed"
 
                 is_save_data = input("Finished episode. Save data? (y/n): ")
                 if is_save_data.lower() == "y":
-                    file_name = f"{task_name}_{time.strftime('%Y%m%d-%H%M%S')}.npz"
+                    file_name = f"{task_name}_{time.strftime('%Y%m%d_%H%M%S')}.npz"
+                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_cube_1101/" + file_name
                     print(f"Saving data to {file_name}")
                     with open(file_name, "wb") as f:
                         np.savez(f, 
-                            obses=obses, actions=actions, rews=rews, dones=dones, truncated=truncated, infos=infos,
+                            obses=obses, actions=actions, rews=rews, dones=dones, truncateds=truncateds, infos=infos,
                             allow_pickle=True
                         )
                     episodes_progress_bar.update(1)
@@ -62,5 +68,9 @@ if __name__ == "__main__":
                 time.sleep(1)
 
         except KeyboardInterrupt:
+            env.close()
+            break
+        except Exception as e:
+            print(e)
             env.close()
             break

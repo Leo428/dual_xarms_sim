@@ -51,6 +51,6 @@ class OculusIntervention(gym.ActionWrapper):
             info["right_a_button"] = oculus_info["oculus_data"]["right_a_button"]
             info["right_b_button"] = oculus_info["oculus_data"]["right_b_button"]
             if info["left_b_button"] or info["right_b_button"]:
-                truncated, done = True, True
+                truncated = True
 
         return obs, rew, done, truncated, info

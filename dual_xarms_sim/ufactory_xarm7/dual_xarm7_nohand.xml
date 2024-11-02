@@ -484,19 +484,27 @@
     <framequat name="left/tcp_quat" objtype="site" objname="left/link_tcp" />
     <framelinvel name="left/tcp_vel" objtype="site" objname="left/link_tcp" />
     <frameangvel name="left/tcp_angvel" objtype="site" objname="left/link_tcp" />
-    <framepos name="right/tcp_pos" objtype="site" objname="right/link_tcp" />
-    <framequat name="right/tcp_quat" objtype="site" objname="right/link_tcp" />
-    <framelinvel name="right/tcp_vel" objtype="site" objname="right/link_tcp" />
-    <frameangvel name="right/tcp_angvel" objtype="site" objname="right/link_tcp" />
-
     <framepos name="left/ego_tcp_pos" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
     <framequat name="left/ego_tcp_quat" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
     <framelinvel name="left/ego_tcp_vel" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
     <frameangvel name="left/ego_tcp_angvel" objtype="site" objname="left/link_tcp" reftype="site" refname="ego_center" />
+    <framepos name="left/relative2_tcp_pos" objtype="site" objname="left/link_tcp" reftype="site" refname="right/link_tcp" />
+    <framequat name="left/relative2_tcp_quat" objtype="site" objname="left/link_tcp" reftype="site" refname="right/link_tcp" />
+    <framelinvel name="left/relative2_tcp_vel" objtype="site" objname="left/link_tcp" reftype="site" refname="right/link_tcp" />
+    <frameangvel name="left/relative2_tcp_angvel" objtype="site" objname="left/link_tcp" reftype="site" refname="right/link_tcp" />
+
+    <framepos name="right/tcp_pos" objtype="site" objname="right/link_tcp" />
+    <framequat name="right/tcp_quat" objtype="site" objname="right/link_tcp" />
+    <framelinvel name="right/tcp_vel" objtype="site" objname="right/link_tcp" />
+    <frameangvel name="right/tcp_angvel" objtype="site" objname="right/link_tcp" />
     <framepos name="right/ego_tcp_pos" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
     <framequat name="right/ego_tcp_quat" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
     <framelinvel name="right/ego_tcp_vel" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
     <frameangvel name="right/ego_tcp_angvel" objtype="site" objname="right/link_tcp" reftype="site" refname="ego_center" />
+    <framepos name="right/relative2_tcp_pos" objtype="site" objname="right/link_tcp" reftype="site" refname="left/link_tcp" />
+    <framequat name="right/relative2_tcp_quat" objtype="site" objname="right/link_tcp" reftype="site" refname="left/link_tcp" />
+    <framelinvel name="right/relative2_tcp_vel" objtype="site" objname="right/link_tcp" reftype="site" refname="left/link_tcp" />
+    <frameangvel name="right/relative2_tcp_angvel" objtype="site" objname="right/link_tcp" reftype="site" refname="left/link_tcp" />
   </sensor>
 
   <!-- <keyframe>

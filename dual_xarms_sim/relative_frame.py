@@ -56,6 +56,9 @@ class RelativeFrame(gym.Wrapper):
             self.observation_space["state"][f"{side}/wrist_tcp_vel"] = spaces.Box(
                 -np.inf, np.inf, shape=(6,)
             )
+            self.observation_space["state"][f"{side}/og_action"] = spaces.Box(
+                -1, 1, shape=(7,)
+            )
 
     def step(self, action: np.ndarray):
         # action is assumed to be (x, y, z, rx, ry, rz, gripper)
@@ -78,6 +81,9 @@ class RelativeFrame(gym.Wrapper):
 
         # Transform observation to spatial frame
         transformed_obs = self.transform_observation(obs)
+        transformed_obs["state"]["left/og_action"] = transformed_action[:7]
+        transformed_obs["state"]["right/og_action"] = transformed_action[7:]
+
         return transformed_obs, reward, done, truncated, info
 
     def reset(self, **kwargs):
@@ -95,6 +101,7 @@ class RelativeFrame(gym.Wrapper):
                 self.T_r_o_inv[side] = np.linalg.inv(
                     construct_homogeneous_matrix(obs["state"][f"{side}/wrist_tcp_pose"])
                 )
+            obs["state"][f"{side}/og_action"] = np.zeros(7)
 
         # Transform observation to spatial frame
         return self.transform_observation(obs), info

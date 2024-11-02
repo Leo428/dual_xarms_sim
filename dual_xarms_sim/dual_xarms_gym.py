@@ -38,10 +38,10 @@ _JOINT_NAMES = [
 ]
 # All joints on xarm7 are assumed to have similar velocity limits
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
-_HOME_JOINT_QPOS = np.array([0, -0.25844, -0.00013, 1.03062, -0.00006, 1.31739, 0, 0, -0.25844, -0.00013, 1.03062, 0.00006, 1.31739, 0])
+_HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
-_MAX_LINEAR_VELOCITY = 0.5 # m/s
-_MAX_ANGULAR_VELOCITY = np.pi/4 # rad/s
+_MAX_LINEAR_VELOCITY = 0.75 # m/s
+_MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
 
 class DualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
@@ -50,7 +50,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self,
         action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
-        control_freq: int = 10, # 10 Hz
+        control_freq: int = 20, # 20 Hz
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
@@ -113,8 +113,17 @@ class DualXarmsGymEnv(MujocoGymEnv):
                     "left/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
                         -np.inf, np.inf, shape=(6,), dtype=np.float32
                     ),
+                    "left/relative2_tcp_pose": spaces.Box( # relative to right tcp, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/relative2_tcp_vel": spaces.Box( # relative to right tcp, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
                     "left/gripper_pos": spaces.Box(
                         -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "left/joint_qpos": spaces.Box(
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
                     ),
                     "right/tcp_pose": spaces.Box( # world frame, pos + quat
                         -np.inf, np.inf, shape=(7,), dtype=np.float32
@@ -128,8 +137,17 @@ class DualXarmsGymEnv(MujocoGymEnv):
                     "right/ego_tcp_vel": spaces.Box( # head camera frame, linear + angular euler
                         -np.inf, np.inf, shape=(6,), dtype=np.float32
                     ),
+                    "right/relative2_tcp_pose": spaces.Box( # relative to left tcp, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/relative2_tcp_vel": spaces.Box( # relative to left tcp, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
                     "right/gripper_pos": spaces.Box(
                         -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "right/joint_qpos": spaces.Box(
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
                     ),
                     # "block_pose": spaces.Box( # world frame, pos + quat
                     #     -np.inf, np.inf, shape=(7,), dtype=np.float32
@@ -211,7 +229,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mink.VelocityLimit(self.model, self.velocity_limits),
             collision_avoidance_limit,
         ]
-        self.ik_rate = RateLimiter(frequency=100.0)
+        self.ik_rate = RateLimiter(frequency=200.0)
         self.ik_controller = IKController(
             model=self._model, data=self._data,
             configuration=self.ik_configuration,
@@ -314,11 +332,12 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self._data.ctrl[self._gripper_ctrl_ids[1]] = right_ng * 255
 
         obs = self._compute_observation()
-        # rew = self._compute_reward()
+        rew = self._compute_reward()
         # terminated = self.time_limit_exceeded()
+        done = True if rew == 4.0 else False
 
         self.gym_rate.sleep()
-        return obs, 0, False, False, {}
+        return obs, rew, done, False, {}
 
     def render(self):
         rendered_frames = []
@@ -351,6 +370,18 @@ class DualXarmsGymEnv(MujocoGymEnv):
                 ego_tcp_angvel = self._data.sensor(f"{side}/ego_tcp_angvel").data
                 obs["state"][f"{side}/ego_tcp_vel"] = np.concatenate([ego_tcp_vel, ego_tcp_angvel]).astype(np.float32)
 
+                # relative to the other side tcp
+                wrt2other_tcp_pos = self._data.sensor(f"{side}/relative2_tcp_pos").data
+                wrt2other_tcp_quat = np.roll(self._data.sensor(f"{side}/relative2_tcp_quat").data, -1)
+                obs["state"][f"{side}/relative2_tcp_pose"] = np.concatenate([wrt2other_tcp_pos, wrt2other_tcp_quat]).astype(np.float32)
+                wrt2other_tcp_vel = self._data.sensor(f"{side}/relative2_tcp_vel").data
+                wrt2other_tcp_angvel = self._data.sensor(f"{side}/relative2_tcp_angvel").data
+                obs["state"][f"{side}/relative2_tcp_vel"] = np.concatenate([wrt2other_tcp_vel, wrt2other_tcp_angvel]).astype(np.float32)
+
+                # joint qpos
+                joint_qpos = self._data.qpos[self.arm_dof_ids]
+                obs["state"][f"{side}/joint_qpos"] = joint_qpos[:7] if side == "left" else joint_qpos[7:]
+
             # gripper pos
             obs["state"]["left/gripper_pos"] = np.array(
                 self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32)
@@ -370,15 +401,35 @@ class DualXarmsGymEnv(MujocoGymEnv):
         return obs
 
     def _compute_reward(self) -> float:
-        # block_pos = self._data.sensor("block_pos").data
-        # tcp_pos = self._data.sensor("2f85/pinch_pos").data
-        # dist = np.linalg.norm(block_pos - tcp_pos)
-        # r_close = np.exp(-20 * dist)
-        # r_lift = (block_pos[2] - self._z_init) / (self._z_success - self._z_init)
-        # r_lift = np.clip(r_lift, 0.0, 1.0)
-        # rew = 0.3 * r_close + 0.7 * r_lift
-        # return rew
-        return 0
+        # Check if the block is in contact with the gripper
+        all_contact_pairs = []
+        with self.ik_controller.lock:
+            for i in range(self.data.ncon):
+                contact = self.data.contact[i]
+                contact_pair = (self.model.geom(contact.geom1).name, self.model.geom(contact.geom2).name)
+                all_contact_pairs.append(contact_pair)
+
+        cube_held_left = (("left/left_pad", "cube") in all_contact_pairs or \
+                            ("left/left_pad_lower", "cube") in all_contact_pairs) and \
+                            (("left/right_pad", "cube") in all_contact_pairs or \
+                            ("left/right_pad_lower", "cube") in all_contact_pairs)
+        cube_held_right = (("right/left_pad", "cube") in all_contact_pairs or \
+                            ("right/left_pad_lower", "cube") in all_contact_pairs) and \
+                            (("right/right_pad", "cube") in all_contact_pairs or \
+                            ("right/right_pad_lower", "cube") in all_contact_pairs)
+        cube_on_floor = ("floor", "cube") in all_contact_pairs
+
+        if cube_held_right and (not cube_held_left):
+            if cube_on_floor:
+                return 1.0
+            return 2.0
+        elif cube_held_right and cube_held_left and (not cube_on_floor):
+            return 3.0
+        elif cube_held_left and not cube_held_right and (not cube_on_floor):
+            
+            return 4.0
+
+        return 0.0
 
     def close(self):
         if self.render_mode == "human":
@@ -397,25 +448,23 @@ class DualXarmsGymEnv(MujocoGymEnv):
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    env = DualXarmsGymEnv(render_mode="human")
+    env = DualXarmsGymEnv(control_freq=20, render_mode="human")
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
-    env = OculusIntervention(env, freq=10)
-    env = RelativeFrame(env)
+    try:
+        env = OculusIntervention(env, freq=20)
+        env = RelativeFrame(env)
 
-    obs, _ = env.reset()
-    obses = [obs]
+        obs, _ = env.reset()
+        obses = [obs]
 
-    for i in tqdm(range(100000)):
-        action = env.action_space.sample() * 0
-        obs, _, _, _, _ = env.step(action)
+        for i in tqdm(range(100000)):
+            action = env.action_space.sample() * 0
+            obs, rew, done, _, info = env.step(action)
+            if "intervene_action" in info:
+                action = info["intervene_action"]
+            print(rew, done)
 
-    #     obses.append(obs)
-
-    # with open("obses.npy", "wb") as f:
-    #     np.save(f, obses, allow_pickle=True)
-
-    env.ik_controller.human_viewer.close()
-    env.ik_controller.stop()
-    env.ik_thread.join()
+    except KeyboardInterrupt:
+        env.close()

@@ -35,7 +35,7 @@
 
     <body name="block" pos="0 0.4 0.02">
       <freejoint name="block" />
-      <geom type="box" size="0.1 0.02 0.02" rgba=".6 .3 .6 1" friction=".6" priority="1"/>
+      <geom name="cube" type="box" size="0.1 0.02 0.02" rgba=".6 .3 .6 1" friction=".6" priority="1"/>
     </body>
   </worldbody>
 
