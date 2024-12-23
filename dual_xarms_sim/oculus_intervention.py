@@ -24,19 +24,31 @@ class OculusIntervention(gym.ActionWrapper):
         if data is None:
             return action, {"intervened": False, "oculus_data": None}
 
+        # if data["left_move_button"] or data["right_move_button"]:
+        #     action[:3] = np.array([data["left_dx"], data["left_dy"], data["left_dz"]])
+        #     # scale between [-1, 1]
+        #     action[:3] = action[:3] / self.env.MAX_LINEAR_VELOCITY
+        #     action[3:6] = np.array([data["left_drx"], data["left_dry"], data["left_drz"]])
+        #     action[3:6] = action[3:6] / self.env.MAX_ANGULAR_VELOCITY
+        #     action[6] = data["left_joystick"][0]
+        #     action[7:10] = np.array([data["right_dx"], data["right_dy"], data["right_dz"]])
+        #     action[7:10] = action[7:10] / self.env.MAX_LINEAR_VELOCITY
+        #     action[10:13] = np.array([data["right_drx"], data["right_dry"], data["right_drz"]])
+        #     action[10:13] = action[10:13] / self.env.MAX_ANGULAR_VELOCITY
+        #     action[13] = data["right_joystick"][0]
+        #     action = np.clip(action, -1, 1)
+        #     return action, {"intervened": True, "oculus_data": data}
         if data["left_move_button"] or data["right_move_button"]:
             action[:3] = np.array([data["left_dx"], data["left_dy"], data["left_dz"]])
-            # scale between [-1, 1]
-            action[:3] = action[:3] / self.env.MAX_LINEAR_VELOCITY
+            action[:3] = action[:3]
             action[3:6] = np.array([data["left_drx"], data["left_dry"], data["left_drz"]])
-            action[3:6] = action[3:6] / self.env.MAX_ANGULAR_VELOCITY
+            action[3:6] = action[3:6]
             action[6] = data["left_joystick"][0]
             action[7:10] = np.array([data["right_dx"], data["right_dy"], data["right_dz"]])
-            action[7:10] = action[7:10] / self.env.MAX_LINEAR_VELOCITY
+            action[7:10] = action[7:10]
             action[10:13] = np.array([data["right_drx"], data["right_dry"], data["right_drz"]])
-            action[10:13] = action[10:13] / self.env.MAX_ANGULAR_VELOCITY
+            action[10:13] = action[10:13]
             action[13] = data["right_joystick"][0]
-            action = np.clip(action, -1, 1)
             return action, {"intervened": True, "oculus_data": data}
 
         return action, {"intervened": False, "oculus_data": data}

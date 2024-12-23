@@ -35,31 +35,36 @@ class IKController:
 
     def run_ik(self):
         self.running = True
-        while self.running:
-            with self.lock:
-                for i in range(self.ik_max_iters):
-                    vel = mink.solve_ik(
-                        self.configuration,
-                        self.tasks,
-                        self.rate.dt,
-                        self.ik_solver,
-                        limits=self.ik_limits,
-                        damping=self.damping,
-                    )
-                    self.configuration.integrate_inplace(vel, self.rate.dt)
+        while True:
+            while self.running:
+                with self.lock:
+                    for i in range(self.ik_max_iters):
+                        vel = mink.solve_ik(
+                            self.configuration,
+                            self.tasks,
+                            self.rate.dt,
+                            self.ik_solver,
+                            limits=self.ik_limits,
+                            damping=self.damping,
+                        )
+                        self.configuration.integrate_inplace(vel, self.rate.dt)
 
-                    l_err = self.l_ee_task.compute_error(self.configuration)
-                    r_err = self.r_ee_task.compute_error(self.configuration)
-                    if np.linalg.norm(l_err[:3]) <= self.pos_threshold and np.linalg.norm(l_err[3:]) <= self.ori_threshold \
-                        and np.linalg.norm(r_err[:3]) <= self.pos_threshold and np.linalg.norm(r_err[3:]) <= self.ori_threshold:
-                        break
+                        l_err = self.l_ee_task.compute_error(self.configuration)
+                        r_err = self.r_ee_task.compute_error(self.configuration)
+                        if np.linalg.norm(l_err[:3]) <= self.pos_threshold and np.linalg.norm(l_err[3:]) <= self.ori_threshold \
+                            and np.linalg.norm(r_err[:3]) <= self.pos_threshold and np.linalg.norm(r_err[3:]) <= self.ori_threshold:
+                            break
 
-                self.data.ctrl[self.actuator_ids] = self.configuration.q[self.dof_ids]
-                mujoco.mj_step(self.model, self.data)
+                    self.data.ctrl[self.actuator_ids] = self.configuration.q[self.dof_ids]
+                    mujoco.mj_step(self.model, self.data)
 
-            if self.human_viewer and self.human_viewer.is_running():
-                self.human_viewer.sync()
-            self.rate.sleep()
+                if self.human_viewer and self.human_viewer.is_running():
+                    self.human_viewer.sync()
+                self.rate.sleep()
+
+    def start(self):
+        with self.lock:
+            self.running = True
 
     def stop(self):
         with self.lock:

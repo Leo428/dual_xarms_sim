@@ -175,3 +175,4 @@ wandb/
 *.npy
 *.npz
 *.png
+*.hdf5

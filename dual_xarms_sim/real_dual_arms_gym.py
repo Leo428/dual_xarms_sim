@@ -5,24 +5,26 @@ import threading
 
 import gymnasium as gym
 import mujoco
-from mujoco import Renderer
 import numpy as np
 from gymnasium import spaces
 import mink
 from loop_rate_limiters import RateLimiter
 from scipy.spatial.transform import Rotation as R
 
+from xarm.wrapper import XArmAPI
+
 from dual_xarms_sim.mujoco_gym_env import GymRenderingSpec, MujocoGymEnv
-from dual_xarms_sim.ik_controller import IKController
+from dual_xarms_sim.real_ik_controller import RealIKController
 
 _HERE = Path(__file__).parent
 _XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
 
-LEFT_HOME = np.asarray([-0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
-RIGHT_HOME = np.asarray([0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
-LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
+# 75.5-18 = 57.5 / 2 = 28.75
+LEFT_HOME = np.asarray([-0.2875, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
+RIGHT_HOME = np.asarray([0.2875, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
+LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.2875 - 0.3, 0.2, 0], [-0.2875 + 0.3, 0.6, 0.5]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
-RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
+RIGHT_CARTESIAN_BOUNDS = np.asarray([[0.2875 - 0.3, 0.2, 0], [0.2875 + 0.3, 0.6, 0.5]])
 # RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 _SAMPLING_BOUNDS = np.asarray([[0, 0.3], [0.2, 0.5]])
 
@@ -37,13 +39,14 @@ _JOINT_NAMES = [
     "joint7",
 ]
 # All joints on xarm7 are assumed to have similar velocity limits
-_VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
-_HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
-_HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
-_MAX_LINEAR_VELOCITY = 0.75 # m/s
-_MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
+_VELOCITY_LIMITS = {k: np.pi/4 for k in _JOINT_NAMES}
+_VELOCITY_LIMITS["joint7"] = np.pi/2
 
-class DualXarmsGymEnv(MujocoGymEnv):
+_HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
+_MAX_LINEAR_VELOCITY = 0.75 # m/s
+_MAX_ANGULAR_VELOCITY = np.pi/4 # rad/s
+
+class RealDualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
 
     def __init__(
@@ -54,14 +57,14 @@ class DualXarmsGymEnv(MujocoGymEnv):
         physics_dt: float = 0.002,
         time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
-        render_mode: Literal["rgb_array", "human"] = "rgb_array",
+        render_mode: Literal["rgb_array", "human"] = "human",
         image_obs: bool = True, run_ik: bool = True,
     ):
         self.control_freq = control_freq
         self.MAX_LINEAR_VELOCITY = _MAX_LINEAR_VELOCITY / control_freq
         self.MAX_ANGULAR_VELOCITY = _MAX_ANGULAR_VELOCITY / control_freq
         self._action_scale = action_scale
-        self.gym_rate = RateLimiter(frequency=control_freq)
+        self.gym_rate = RateLimiter(frequency=control_freq, name="gym_rate")
 
         super().__init__(
             xml_path=_XML_PATH,
@@ -182,7 +185,13 @@ class DualXarmsGymEnv(MujocoGymEnv):
             import mujoco.viewer
             self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
 
-        self._renderer = Renderer(self.model, width=render_spec.width, height=render_spec.height)
+        # self._renderer = Renderer(self.model, width=render_spec.width, height=render_spec.height)
+
+        # initialize robot arms
+        self.left_arm_ip = "192.168.1.221"
+        self.left_arm = XArmAPI(port=self.left_arm_ip, is_radian=True)
+        self.right_arm_ip = "192.168.1.199"
+        self.right_arm = XArmAPI(port=self.right_arm_ip, is_radian=True)
 
         self.ik_configuration = mink.Configuration(self.model)
         # Task definitions using mink library
@@ -200,7 +209,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
             orientation_cost=1.0,
             lm_damping=1.0,
         )
-        self.posture_task = mink.PostureTask(self.model, cost=1e-4)
+        self.posture_task = mink.PostureTask(self.model, cost=1e-2)
         self.tasks = [self.l_ee_task, self.r_ee_task, self.posture_task]
         # Fetch geometry IDs for collision avoidance
         l_wrist_geoms = mink.get_subtree_geom_ids(self.model, self.model.body("left/link7").id)
@@ -221,23 +230,24 @@ class DualXarmsGymEnv(MujocoGymEnv):
         collision_avoidance_limit = mink.CollisionAvoidanceLimit(
             model=self.model,
             geom_pairs=collision_pairs,  # type: ignore
-            minimum_distance_from_collisions=0.01,
-            collision_detection_distance=0.05,
+            minimum_distance_from_collisions=0.05,
+            collision_detection_distance=0.1,
         )
         self.ik_limits = [
             mink.ConfigurationLimit(model=self.model),
             mink.VelocityLimit(self.model, self.velocity_limits),
             collision_avoidance_limit,
         ]
-        self.ik_rate = RateLimiter(frequency=200.0)
-        self.ik_controller = IKController(
+        self.ik_rate = 200.0
+        self.ik_controller = RealIKController(
+            left_arm=self.left_arm, right_arm=self.right_arm, max_angular_vel=_MAX_ANGULAR_VELOCITY,
             model=self._model, data=self._data,
             configuration=self.ik_configuration,
             actuator_ids=self.arm_actuator_ids, dof_ids=self.arm_dof_ids,
             tasks=self.tasks, l_ee_task=self.l_ee_task, r_ee_task=self.r_ee_task,
             ik_solver="quadprog", ik_limits=self.ik_limits,
             ik_max_iters=2, pos_threshold=1e-2, ori_threshold=1e-2,
-            damping=1e-5, rate=self.ik_rate, human_viewer=self._viewer,
+            damping=1e-5, frequency=self.ik_rate, human_viewer=self._viewer,
         )
         self.ik_thread = threading.Thread(target=self.ik_controller.run_ik, daemon=True)
         self.run_ik = run_ik
@@ -246,6 +256,29 @@ class DualXarmsGymEnv(MujocoGymEnv):
     def reset(
         self, seed=None, **kwargs
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        time.sleep(0.1)
+        self.left_arm.motion_enable(enable=True)
+        self.right_arm.motion_enable(enable=True)
+        self.left_arm.set_mode(0)
+        self.right_arm.set_mode(0)
+        self.left_arm.set_state(state=0)
+        self.right_arm.set_state(state=0)
+        self.left_arm.set_gripper_mode(0)
+        self.right_arm.set_gripper_mode(0)
+        self.left_arm.set_gripper_enable(True)
+        self.right_arm.set_gripper_enable(True)
+        self.left_arm.set_gripper_position(840, wait=True, speed=8000)
+        self.right_arm.set_gripper_position(840, wait=True, speed=8000)
+        time.sleep(0.1)
+        self.left_arm.set_servo_angle(angle=_HOME_JOINT_QPOS[:7], speed=0.2, is_radian=True, wait=True)
+        self.right_arm.set_servo_angle(angle=_HOME_JOINT_QPOS[-7:], speed=0.2, is_radian=True, wait=True)
+        time.sleep(0.1)
+        self.left_arm.set_mode(1) # 1: servo joint position mode
+        self.right_arm.set_mode(1) # 1: servo joint position mode
+        self.left_arm.set_state(state=0)
+        self.right_arm.set_state(state=0)
+        time.sleep(0.1)
+
         """Reset the environment."""
         self.ik_controller.stop()
         time.sleep(0.1)
@@ -255,7 +288,18 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mujoco.mj_resetData(self._model, self._data)
 
             # Reset arm to home position.
-            self._data.qpos[self.arm_dof_ids] = _HOME_JOINT_QPOS
+            # self._data.qpos[self.arm_dof_ids] = _HOME_JOINT_QPOS
+            status, left_qpos = self.left_arm.get_servo_angle(is_radian=True)
+            if status == 0:
+                self._data.qpos[self.arm_dof_ids[:7]] = left_qpos
+            else:
+                print(f"Failed to get left arm servo angle: {status}")
+            status, right_qpos = self.right_arm.get_servo_angle(is_radian=True)
+            if status == 0:
+                self._data.qpos[self.arm_dof_ids[-7:]] = right_qpos
+            else:
+                print(f"Failed to get right arm servo angle: {status}")
+            self.ik_configuration.update(self.data.qpos)
             mujoco.mj_forward(self._model, self._data)
 
             # Reset mocap body to home position.
@@ -340,6 +384,9 @@ class DualXarmsGymEnv(MujocoGymEnv):
         right_ng = np.clip(right_g + right_dg, 0.0, 1.0)
         self._data.ctrl[self._gripper_ctrl_ids[0]] = left_ng * 255
         self._data.ctrl[self._gripper_ctrl_ids[1]] = right_ng * 255
+        # gripper range on the real arms is between 80 and 840, 0 is open, 1 is closed
+        self.left_arm.set_gripper_position(int(80 + (1-left_ng) * (840 - 80)), wait=False, speed=8000)
+        self.right_arm.set_gripper_position(int(80 + (1-right_ng) * (840 - 80)), wait=False, speed=8000)
 
         obs = self._compute_observation()
         rew = self._compute_reward()
@@ -350,29 +397,11 @@ class DualXarmsGymEnv(MujocoGymEnv):
         # time.sleep(0.005)
         return obs, rew, done, False, {}
 
-    # directly takes in joint angles from both arms and grippers, (16,)
-    def step_joints(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
-        left_gripper = action[7]
-        right_gripper = action[15]
-        for _ in range(10):
-            self.data.ctrl[self.arm_actuator_ids] = np.concat((action[:7], action[8:15]))
-            self.data.ctrl[self._gripper_ctrl_ids[0]] = left_gripper * 255
-            self.data.ctrl[self._gripper_ctrl_ids[1]] = right_gripper * 255
-            mujoco.mj_step(self.model, self.data)
-
-        obs = self._compute_observation()
-        rew = self._compute_reward()
-        done = True if rew == 4.0 else False
-
-        self._viewer.sync()
-        # self.gym_rate.sleep()
-        return obs, rew, done, False, {}
-
     def render(self):
         rendered_frames = []
-        for cam_name in self.camera_names:
-            self._renderer.update_scene(self.data, camera=cam_name)
-            rendered_frames.append(self._renderer.render())
+        # for cam_name in self.camera_names:
+        #     self._renderer.update_scene(self.data, camera=cam_name)
+        #     rendered_frames.append(self._renderer.render())
         return rendered_frames
 
     def _compute_observation(self) -> dict:
@@ -419,9 +448,9 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         if self.image_obs:
             obs["images"] = {}
-            images = self.render()
-            for cam_name in self.camera_names:
-                obs["images"][cam_name] = images.pop(0)
+            # images = self.render()
+            # for cam_name in self.camera_names:
+            #     obs["images"][cam_name] = images.pop(0)
 
         # else:
         #     block_pos = self._data.sensor("block_pos").data.astype(np.float32)
@@ -477,23 +506,23 @@ class DualXarmsGymEnv(MujocoGymEnv):
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    env = DualXarmsGymEnv(control_freq=20, render_mode="human")
+    env = RealDualXarmsGymEnv(control_freq=50, render_mode="human")
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
     try:
-        env = OculusIntervention(env, freq=20)
-        env = RelativeFrame(env)
+        env = OculusIntervention(env, freq=50)
+        # env = RelativeFrame(env)
 
         obs, _ = env.reset()
-        obses = [obs]
+        # obses = [obs]
 
         for i in tqdm(range(100000)):
             action = env.action_space.sample() * 0
             obs, rew, done, _, info = env.step(action)
             if "intervene_action" in info:
                 action = info["intervene_action"]
-            print(rew, done)
+            # print(rew, done)
 
     except KeyboardInterrupt:
         env.close()

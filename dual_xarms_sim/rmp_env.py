@@ -1,0 +1,323 @@
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+from loop_rate_limiters import RateLimiter
+from scipy.spatial.transform import Rotation as R
+from typing import Any, Literal, Tuple, Dict
+import zmq
+import json
+import time
+from tqdm import tqdm
+import cv2
+import queue
+import threading
+from copy import deepcopy
+
+from dual_xarms_sim.oculus_intervention import OculusIntervention
+
+_HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
+_LEFT_HOME_TCP_POSE = np.array([7.4233063e-02, 3.8093147e-01, 1.9769229e-01, -2.7911010e-05, 9.9990791e-01, -9.1831549e-05, -1.3579541e-02])
+_RIGHT_HOME_TCP_POSE = np.array([7.4233063e-02, -3.8093147e-01, 1.9769229e-01, -2.7911010e-05, 9.9990791e-01, -9.1831549e-05, -1.3579541e-02])
+_LEFT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, 0.381-0.381 - 0.25, 0], [0.381 + 0.03, 0.381 + 0.381, 0.6]])
+_RIGHT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, -0.381-0.381, 0], [0.381 + 0.03, -0.381 + 0.381 + 0.25, 0.6]])
+
+class ImageDisplayer(threading.Thread):
+    def __init__(self, queue):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.daemon = True  # make this a daemon thread
+
+    def run(self):
+        while True:
+            bgrs = []
+
+            cam_list = self.queue.get()
+            for data in cam_list:
+                name, bgr =  data # retrieve an image from the queue
+                if bgr.shape[0] == 720:
+                    # resize to 360x640
+                    bgr = cv2.resize(bgr, (640, 360))
+                bgrs.append(bgr)
+
+            bgrs = np.vstack((np.hstack(bgrs[:2]), np.hstack(bgrs[2:])))
+            cv2.imshow("ZED Cameras (RGB)", bgrs)
+            cv2.waitKey(1)
+
+class RMPDualXArmsEnv(gym.Env):
+    def __init__(self,
+        seed: int = 0,
+        control_freq: int = 50, # Hz
+        max_linear_velocity: float = 1.0, # m/s
+        max_angular_velocity: float = np.pi/3, # rad/s
+    ):
+        super().__init__()
+        self.control_freq = control_freq
+        self._MAX_LINEAR_VELOCITY = max_linear_velocity / control_freq
+        self._MAX_ANGULAR_VELOCITY = max_angular_velocity / control_freq
+        self.gym_rate = RateLimiter(control_freq, warn=False)
+
+        self.observation_space = gym.spaces.Dict({
+            "state": gym.spaces.Dict(
+                {
+                    "left/tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/tcp_vel": spaces.Box( # world frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "left/gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "left/joint_qpos": spaces.Box(
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/tcp_vel": spaces.Box( # world frame, linear + angular euler
+                        -np.inf, np.inf, shape=(6,), dtype=np.float32
+                    ),
+                    "right/gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "right/joint_qpos": spaces.Box(
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                }
+            ),
+            "images": gym.spaces.Dict(
+                {
+                    "left/top": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "left/wrist": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "right/top": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                    "right/wrist": gym.spaces.Box(0, 255, shape=(224, 224, 3), dtype=np.uint8),
+                }
+            )
+        })
+
+        # left tcp pos delta, left tcp euler delta, left gripper pos,
+        # right tcp pos delta, right tcp euler delta, right gripper pos
+        self.action_space = gym.spaces.Box(
+            low=np.asarray([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]),
+            high=np.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            dtype=np.float32,
+        )
+
+        self.zmq_context = zmq.Context()
+        self.action_cmd_pub = self.zmq_context.socket(zmq.PUB)
+        self.action_cmd_pub.setsockopt(zmq.CONFLATE, 1)  # Ensure only the latest message is kept
+        self.action_cmd_pub.bind("tcp://127.0.0.1:5002")
+
+        self.robot_state_sub = self.zmq_context.socket(zmq.SUB)
+        self.robot_state_sub.setsockopt(zmq.RCVHWM, 1)  # Receive the latest message
+        self.robot_state_sub.connect("tcp://127.0.0.1:5005")
+        self.robot_state_sub.setsockopt_string(zmq.SUBSCRIBE, "")
+
+        self.robot_states = {}
+        self.images = {}
+        self.left_target_tcp_pose = None
+        self.right_target_tcp_pose = None
+        self.left_target_gripper_pos = 0
+        self.right_target_gripper_pos = 0
+
+        self.latency_running_avg = 0.0
+        self.bar = tqdm(total=100000000, desc="freq:")
+
+        self.frames_queue = queue.Queue(maxsize=10)
+        self.displayer = ImageDisplayer(self.frames_queue)
+        self.displayer.start()
+
+    def reset(
+        self, seed=None, **kwargs
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        obs = self._compute_observation()
+        self.left_target_tcp_pose = _LEFT_HOME_TCP_POSE
+        self.right_target_tcp_pose = _RIGHT_HOME_TCP_POSE
+        self.left_target_gripper_pos = 840
+        self.right_target_gripper_pos = 840
+        count = 0
+        while count < 1000:
+            left_pos_diff = self.left_target_tcp_pose[:3] - self.robot_states["left/tcp_pose"][:3]
+            right_pos_diff = self.right_target_tcp_pose[:3] - self.robot_states["right/tcp_pose"][:3]
+            left_rot_diff = R.from_quat(self.left_target_tcp_pose[3:7], scalar_first=True) * R.from_quat(self.robot_states["left/tcp_pose"][3:7], scalar_first=True).inv()
+            right_rot_diff = R.from_quat(self.right_target_tcp_pose[3:7], scalar_first=True) * R.from_quat(self.robot_states["right/tcp_pose"][3:7], scalar_first=True).inv()
+            left_euler_diff = left_rot_diff.as_euler("xyz")
+            right_euler_diff = right_rot_diff.as_euler("xyz")
+            if np.linalg.norm(left_pos_diff) < 0.01 and np.linalg.norm(right_pos_diff) < 0.01 and \
+                np.linalg.norm(left_euler_diff) < 0.01 and np.linalg.norm(right_euler_diff) < 0.01:
+                print("Reset done!")
+                break
+            # limit the diff
+            left_pos_diff = self.limit_offset_norm(left_pos_diff, self._MAX_LINEAR_VELOCITY * 0.8)
+            right_pos_diff = self.limit_offset_norm(right_pos_diff, self._MAX_LINEAR_VELOCITY * 0.8)
+            left_euler_diff = self.limit_offset_norm(left_euler_diff, self._MAX_ANGULAR_VELOCITY)
+            right_euler_diff = self.limit_offset_norm(right_euler_diff, self._MAX_ANGULAR_VELOCITY)
+
+            left_target_pose = np.concatenate([
+                self.robot_states["left/tcp_pose"][:3] + left_pos_diff[:3],
+                (
+                    R.from_euler("xyz", left_euler_diff) * \
+                    R.from_quat(self.robot_states["left/tcp_pose"][3:7], scalar_first=True)
+                ).as_quat(scalar_first=True),
+            ])
+            right_target_pose = np.concatenate([
+                self.robot_states["right/tcp_pose"][:3] + right_pos_diff[:3],
+                (
+                    R.from_euler("xyz", right_euler_diff) * \
+                    R.from_quat(self.robot_states["right/tcp_pose"][3:7], scalar_first=True)
+                ).as_quat(scalar_first=True),
+            ])
+            self.action_cmd_pub.send_json(
+                {
+                    "timestamp": time.time(),
+                    "action": np.concatenate([
+                        left_target_pose, [self.left_target_gripper_pos],
+                        right_target_pose, [self.right_target_gripper_pos],
+                    ]).tolist(),
+                }
+            )
+            self.gym_rate.sleep()
+            obs = self._compute_observation()
+
+        while self.latency_running_avg > 0.02:
+            obs = self._compute_observation() # this should wait for the first observation after reset
+            time.sleep(0.001)
+
+        self.left_target_tcp_pose = self.robot_states["left/tcp_pose"]
+        self.right_target_tcp_pose = self.robot_states["right/tcp_pose"]
+        self.bar.reset()
+        return obs, {}
+
+    def _compute_observation(self) -> Dict[str, np.ndarray]:
+        while True:
+            try:
+                msg = self.robot_state_sub.recv_json(flags=zmq.NOBLOCK)
+                timestamp = msg["timestamp"]
+                robot_state = msg["robot_state"]
+                metadata = msg["metadata"]
+                for cam in metadata["cameras"]:
+                    binary_data = self.robot_state_sub.recv()
+                    self.images[cam] = np.frombuffer(binary_data, dtype=np.uint8).reshape(360, 640, 3)
+                for k, v in robot_state.items():
+                    self.robot_states[k] = np.array(v, dtype=np.float32)
+
+                self.frames_queue.put([
+                    ("left/top", self.images["left/top"]),
+                    ("right/top", self.images["right/top"]),
+                    ("left/wrist", self.images["left/wrist"]),
+                    ("right/wrist", self.images["right/wrist"]),
+                ])
+
+                self.latency_running_avg = 0.1 * self.latency_running_avg + \
+                    0.9 * (time.time() - timestamp)
+                self.bar.desc = f"avg latency: {self.latency_running_avg * 1000:.2f} ms"
+                # return both states and images
+                return {
+                    "state": deepcopy(self.robot_states),
+                    "images": deepcopy(self.images),
+                }
+            except zmq.Again:
+                continue
+
+    def limit_offset_norm(self, offset, max_offset):
+        # scale offset such that the max norm of offset is max_offset
+        norm = np.linalg.norm(offset)
+        if norm > max_offset:
+            offset = offset / norm * max_offset
+        return offset
+
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
+        action = action.astype(np.float32)
+        left_gripper_pos = self.robot_states["left/gripper_pos"]
+        right_gripper_pos = self.robot_states["right/gripper_pos"]
+
+        left_d_xyz = action[:3]
+        left_d_xyz = self.limit_offset_norm(left_d_xyz, self._MAX_LINEAR_VELOCITY)
+        left_d_rpy = action[3:6]
+        left_d_rpy = self.limit_offset_norm(left_d_rpy, self._MAX_ANGULAR_VELOCITY)
+        left_dg = -action[6]
+        right_d_xyz = action[7:10]
+        right_d_xyz = self.limit_offset_norm(right_d_xyz, self._MAX_LINEAR_VELOCITY)
+        right_d_rpy = action[10:13]
+        right_d_rpy = self.limit_offset_norm(right_d_rpy, self._MAX_ANGULAR_VELOCITY)
+        right_dg = -action[13]
+
+        left_d_quat = R.from_euler("xyz", left_d_rpy)
+        right_d_quat = R.from_euler("xyz", right_d_rpy)
+        self.left_target_tcp_pose[3:7] = (left_d_quat * R.from_quat(self.left_target_tcp_pose[3:7], scalar_first=True)).as_quat(scalar_first=True)
+        self.right_target_tcp_pose[3:7] = (right_d_quat * R.from_quat(self.right_target_tcp_pose[3:7], scalar_first=True)).as_quat(scalar_first=True)
+        self.left_target_tcp_pose[0:3] += left_d_xyz
+        self.right_target_tcp_pose[0:3] += right_d_xyz
+        self.left_target_tcp_pose[0:3] = np.clip(
+            self.left_target_tcp_pose[0:3], _LEFT_CARTESIAN_BOUNDS[0], _LEFT_CARTESIAN_BOUNDS[1]
+        )
+        self.right_target_tcp_pose[0:3] = np.clip(
+            self.right_target_tcp_pose[0:3], _RIGHT_CARTESIAN_BOUNDS[0], _RIGHT_CARTESIAN_BOUNDS[1]
+        )
+
+        # gripper range on the real arms is between 80 and 840
+        if abs(left_dg) > 0.05:
+            left_dg = left_dg * 80
+            left_target_gripper_pos = np.clip(left_gripper_pos + left_dg, 80, 840)
+        else:
+            left_target_gripper_pos = 0
+        if abs(right_dg) > 0.05:
+            right_dg = right_dg * 80
+            right_target_gripper_pos = np.clip(right_gripper_pos + right_dg, 80, 840)
+        else:
+            right_target_gripper_pos = 0
+
+        # Send action command to central server
+        target_cmd = np.concat([
+            self.left_target_tcp_pose, [left_target_gripper_pos],
+            self.right_target_tcp_pose, [right_target_gripper_pos],
+        ])
+        self.action_cmd_pub.send_json(
+            {
+                "timestamp": time.time(),
+                "action": target_cmd.tolist(),
+            }
+        )
+
+        # Simulate step function logic (replace with your actual implementation)
+        reward = 0.0  # Placeholder
+        done = False  # Placeholder
+        truncated = False
+        info = {}  # Placeholder
+
+        self.gym_rate.sleep()
+        self.bar.update(1)
+        obs = self._compute_observation()
+        return obs, reward, done, truncated, {}
+
+    def close(self):
+        self.action_cmd_pub.close()
+        self.robot_state_sub.close()
+        self.displayer.join()
+
+    def seed(self, seed=None):
+        pass
+
+
+if __name__ == "__main__":
+    from dual_xarms_sim.relative_frame import RelativeFrame
+    try:
+        env = RMPDualXArmsEnv(control_freq=60)
+        env = OculusIntervention(env, freq=60)
+        env = RelativeFrame(env)
+
+        obs, _ = env.reset()
+        done = False
+
+        while not done:
+            action = env.action_space.sample() * 0
+            obs, reward, done, truncated, info = env.step(action)
+            # print(info)
+            # print(obs["state"].keys())
+            # print(obs["images"].keys())
+
+    except Exception as e:
+        print(e)
+        env.close()

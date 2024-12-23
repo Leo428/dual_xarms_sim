@@ -69,6 +69,7 @@ class RelativeFrame(gym.Wrapper):
 
         # this is to convert the spacemouse intervention action
         if "intervene_action" in info:
+            info["og_intervene_action"] = deepcopy(info["intervene_action"]) # TODO: test BUG FIX
             info["intervene_action"] = self.transform_action_inv(
                 info["intervene_action"]
             )
@@ -81,8 +82,12 @@ class RelativeFrame(gym.Wrapper):
 
         # Transform observation to spatial frame
         transformed_obs = self.transform_observation(obs)
-        transformed_obs["state"]["left/og_action"] = transformed_action[:7]
-        transformed_obs["state"]["right/og_action"] = transformed_action[7:]
+        if "og_intervene_action" in info: # TODO: test BUG FIX
+            transformed_obs["state"]["left/og_action"] = info["og_intervene_action"][:7]
+            transformed_obs["state"]["right/og_action"] = info["og_intervene_action"][7:]
+        else:
+            transformed_obs["state"]["left/og_action"] = transformed_action[:7]
+            transformed_obs["state"]["right/og_action"] = transformed_action[7:]
 
         return transformed_obs, reward, done, truncated, info
 
