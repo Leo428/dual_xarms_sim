@@ -30,6 +30,8 @@ dependencies = [
     "imageio",
     "tqdm",
     "moviepy",
+    "mink",
+    "loop_rate_limiters",
 ]
 keywords = ["robot simulator", "reinforcement learning",]
 

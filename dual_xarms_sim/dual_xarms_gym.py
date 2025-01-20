@@ -461,10 +461,11 @@ class DualXarmsGymEnv(MujocoGymEnv):
         return 0.0
 
     def close(self):
+        self.ik_controller.stop()
         if self.render_mode == "human":
             self._viewer.close()
-        self.ik_controller.stop()
-        self.ik_thread.join()
+        if self.ik_thread.is_alive():
+            self.ik_thread.join(timeout=2)
         super().close()
 
     def limit_offset_norm(self, offset, max_offset):
