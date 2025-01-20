@@ -86,8 +86,8 @@
 
   <worldbody>
     <!-- Left Arm -->
-    <!-- <body name="left/link_base" childclass="xarm7" pos="-0.35 0 0" quat="0.7071 0 0 0.7071"> -->
-    <body name="left/link_base" childclass="xarm7" pos="-0.2875 0 0" quat="0.7071 0 0 0.7071">
+    <body name="left/link_base" childclass="xarm7" pos="-0.35 0 0" quat="0.7071 0 0 0.7071">
+    <!-- <body name="left/link_base" childclass="xarm7" pos="-0.2875 0 0" quat="0.7071 0 0 0.7071"> -->
       <inertial pos="-0.021131 -0.0016302 0.056488" quat="0.696843 0.20176 0.10388 0.680376"
         mass="0.88556"
         diaginertia="0.00382023 0.00335282 0.00167725" />
@@ -238,8 +238,8 @@
     </body>
 
     <!-- Right Arm -->
-    <!-- <body name="right/link_base" childclass="xarm7" pos="0.35 0 0" quat="0.7071 0 0 0.7071"> -->
-    <body name="right/link_base" childclass="xarm7" pos="0.2875 0 0" quat="0.7071 0 0 0.7071">
+    <body name="right/link_base" childclass="xarm7" pos="0.35 0 0" quat="0.7071 0 0 0.7071">
+    <!-- <body name="right/link_base" childclass="xarm7" pos="0.2875 0 0" quat="0.7071 0 0 0.7071"> -->
       <inertial pos="-0.021131 -0.0016302 0.056488" quat="0.696843 0.20176 0.10388 0.680376"
         mass="0.88556"
         diaginertia="0.00382023 0.00335282 0.00167725" />
