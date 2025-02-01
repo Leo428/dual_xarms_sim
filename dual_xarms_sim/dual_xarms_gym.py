@@ -61,7 +61,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.MAX_LINEAR_VELOCITY = _MAX_LINEAR_VELOCITY / control_freq
         self.MAX_ANGULAR_VELOCITY = _MAX_ANGULAR_VELOCITY / control_freq
         self._action_scale = action_scale
-        self.gym_rate = RateLimiter(frequency=control_freq)
+        self.gym_rate = RateLimiter(frequency=control_freq, warn=False)
 
         super().__init__(
             xml_path=_XML_PATH,
@@ -229,7 +229,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mink.VelocityLimit(self.model, self.velocity_limits),
             collision_avoidance_limit,
         ]
-        self.ik_rate = RateLimiter(frequency=200.0)
+        self.ik_rate = RateLimiter(frequency=200.0, warn=False)
         self.ik_controller = IKController(
             model=self._model, data=self._data,
             configuration=self.ik_configuration,
@@ -242,11 +242,13 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.ik_thread = threading.Thread(target=self.ik_controller.run_ik, daemon=True)
         self.run_ik = run_ik
         self.is_ik_thread_running = False
+        self.step_counter = 0
 
     def reset(
         self, seed=None, **kwargs
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         """Reset the environment."""
+        self.step_counter = 0
         self.ik_controller.stop()
         time.sleep(0.1)
 
@@ -345,10 +347,11 @@ class DualXarmsGymEnv(MujocoGymEnv):
         rew = self._compute_reward()
         # terminated = self.time_limit_exceeded()
         done = True if rew == 4.0 else False
-
+        self.step_counter += 1
+        truncated = self.step_counter >= 1200
         self.gym_rate.sleep()
         # time.sleep(0.005)
-        return obs, rew, done, False, {}
+        return obs, rew, done, truncated, {}
 
     # directly takes in joint angles from both arms and grippers, (16,)
     def step_joints(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
