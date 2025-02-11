@@ -46,7 +46,7 @@ class ImageDisplayer(threading.Thread):
 class RMPDualXArmsEnv(gym.Env):
     def __init__(self,
         seed: int = 0,
-        control_freq: int = 50, # Hz
+        control_freq: int = 60, # Hz
         max_linear_velocity: float = 1.0, # m/s
         max_angular_velocity: float = np.pi/3, # rad/s
     ):
@@ -122,6 +122,8 @@ class RMPDualXArmsEnv(gym.Env):
 
         self.latency_running_avg = 0.0
         self.bar = tqdm(total=100000000, desc="freq:")
+        self.step_count = 0
+        self.MAX_STEPS = 2 * 60 * self.control_freq
 
         self.frames_queue = queue.Queue(maxsize=10)
         self.displayer = ImageDisplayer(self.frames_queue)
@@ -179,13 +181,15 @@ class RMPDualXArmsEnv(gym.Env):
             self.gym_rate.sleep()
             obs = self._compute_observation()
 
-        while self.latency_running_avg > 0.02:
-            obs = self._compute_observation() # this should wait for the first observation after reset
-            time.sleep(0.001)
+        obs = self._compute_observation()
+        # while self.latency_running_avg > 0.02:
+        #     obs = self._compute_observation() # this should wait for the first observation after reset
+        #     time.sleep(0.001)
 
         self.left_target_tcp_pose = self.robot_states["left/tcp_pose"]
         self.right_target_tcp_pose = self.robot_states["right/tcp_pose"]
         self.bar.reset()
+        self.step_count = 0
         return obs, {}
 
     def _compute_observation(self) -> Dict[str, np.ndarray]:
@@ -206,16 +210,18 @@ class RMPDualXArmsEnv(gym.Env):
                     ("right/top", self.images["right/top"]),
                     ("left/wrist", self.images["left/wrist"]),
                     ("right/wrist", self.images["right/wrist"]),
-                ])
+                ], block=False)
 
                 self.latency_running_avg = 0.1 * self.latency_running_avg + \
                     0.9 * (time.time() - timestamp)
+                # self.latency_running_avg = (time.time() - timestamp)
                 self.bar.desc = f"avg latency: {self.latency_running_avg * 1000:.2f} ms"
                 # return both states and images
-                return {
-                    "state": deepcopy(self.robot_states),
-                    "images": deepcopy(self.images),
-                }
+                if self.latency_running_avg < 0.03:
+                    return {
+                        "state": deepcopy(self.robot_states),
+                        "images": deepcopy(self.images),
+                    }
             except zmq.Again:
                 continue
 
@@ -281,10 +287,10 @@ class RMPDualXArmsEnv(gym.Env):
             }
         )
 
-        # Simulate step function logic (replace with your actual implementation)
+        self.step_count += 1
         reward = 0.0  # Placeholder
         done = False  # Placeholder
-        truncated = False
+        truncated = self.step_count >= self.MAX_STEPS
         info = {}  # Placeholder
 
         self.gym_rate.sleep()
@@ -310,6 +316,7 @@ if __name__ == "__main__":
 
         obs, _ = env.reset()
         done = False
+        import ipdb; ipdb.set_trace()
 
         while not done:
             action = env.action_space.sample() * 0
