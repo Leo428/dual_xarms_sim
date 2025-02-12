@@ -7,6 +7,8 @@ from copy import deepcopy
 from dual_xarms_sim.utils.transformation import (
     construct_adjoint_matrix,
     construct_homogeneous_matrix,
+    compute_relative_poses_batch,
+    compute_relative_velocities_batch
 )
 
 
@@ -82,7 +84,7 @@ class RelativeFrame(gym.Wrapper):
 
         # Transform observation to spatial frame
         transformed_obs = self.transform_observation(obs)
-        if "og_intervene_action" in info: # TODO: test BUG FIX
+        if "og_intervene_action" in info:
             transformed_obs["state"]["left/og_action"] = info["og_intervene_action"][:7]
             transformed_obs["state"]["right/og_action"] = info["og_intervene_action"][7:]
         else:
@@ -150,3 +152,25 @@ class RelativeFrame(gym.Wrapper):
         action[:6] = np.linalg.inv(self.adjoint_matrix["left"]) @ action[:6]
         action[7:13] = np.linalg.inv(self.adjoint_matrix["right"]) @ action[7:13]
         return action
+
+class WristRelativeTo(gym.ObservationWrapper):
+    """
+    This wrapper transforms the observation to be expressed in the wrist frame relative to the base frame.
+    """
+
+    def __init__(self, env: Env):
+        super().__init__(env)
+        self.observation_space = deepcopy(env.observation_space)
+
+    def observation(self, observation):
+        # TODO: currently it's using ee_pose instead of tcp_pose, need to fix that after
+        # re-training the model
+        left_tcp_pose = observation["state"]["left/tcp_pose"][None, ...]
+        right_tcp_pose = observation["state"]["right/tcp_pose"][None, ...]
+        left_tcp_vel = observation["state"]["left/tcp_vel"][None, ...]
+        right_tcp_vel = observation["state"]["right/tcp_vel"][None, ...]
+        observation["state"]["left/relative2_tcp_pose"] = compute_relative_poses_batch(left_tcp_pose, right_tcp_pose)[0]
+        observation["state"]["right/relative2_tcp_pose"] = compute_relative_poses_batch(right_tcp_pose, left_tcp_pose)[0]
+        observation["state"]["left/relative2_tcp_vel"] = compute_relative_velocities_batch(left_tcp_vel, right_tcp_vel, left_tcp_pose, right_tcp_pose)[0]
+        observation["state"]["right/relative2_tcp_vel"] = compute_relative_velocities_batch(right_tcp_vel, left_tcp_vel, right_tcp_pose, left_tcp_pose)[0]
+        return observation

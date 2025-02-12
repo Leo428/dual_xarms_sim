@@ -308,15 +308,16 @@ class RMPDualXArmsEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    from dual_xarms_sim.relative_frame import RelativeFrame
+    from dual_xarms_sim.relative_frame import RelativeFrame, WristRelativeTo
     try:
         env = RMPDualXArmsEnv(control_freq=60)
         env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
+        env = WristRelativeTo(env)
 
         obs, _ = env.reset()
         done = False
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
 
         while not done:
             action = env.action_space.sample() * 0
