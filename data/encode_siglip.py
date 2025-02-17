@@ -151,8 +151,10 @@ def load_data(dataset_dir, num_episodes, camera_names, batch_size_train, batch_s
 #########################################
 if __name__ == "__main__":
     # Paths and parameters:
-    dataset_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_1212_hdf5/"
-    num_episodes = 55
+    # dataset_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_1212_hdf5/"
+    # num_episodes = 55
+    dataset_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_0212_hdf5/"
+    num_episodes = 60
     camera_names = ['left/top', 'right/top', 'left/wrist', 'right/wrist']
     action_chunk = 60
     batch_size = 64
