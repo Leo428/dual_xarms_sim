@@ -1,7 +1,5 @@
 from pathlib import Path
 from typing import Any, Literal, Tuple, Dict
-import time
-import threading
 
 import gymnasium as gym
 import mujoco
@@ -13,10 +11,9 @@ from loop_rate_limiters import RateLimiter
 from scipy.spatial.transform import Rotation as R
 
 from dual_xarms_sim.mujoco_gym_env import GymRenderingSpec, MujocoGymEnv
-from dual_xarms_sim.ik_controller import IKController
 
 _HERE = Path(__file__).parent
-_XML_PATH = _HERE / "ufactory_xarm7" / "dual_scene.xml"
+_XML_PATH = _HERE / "ufactory_xarm7" / "insert_scene.xml"
 
 LEFT_HOME = np.asarray([-0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
 RIGHT_HOME = np.asarray([0.35, 0.4, 0.2, 0, 0.7071068, -0.7071068, 0])
@@ -40,7 +37,7 @@ _JOINT_NAMES = [
 _VELOCITY_LIMITS = {k: np.pi for k in _JOINT_NAMES}
 _HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
 _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
-_MAX_LINEAR_VELOCITY = 0.75 # m/s
+_MAX_LINEAR_VELOCITY = 1 # m/s
 _MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
 
 class DualXarmsGymEnv(MujocoGymEnv):
@@ -48,7 +45,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
     def __init__(
         self,
-        action_scale: np.ndarray = np.asarray([0.1, 1]),
         seed: int = 0,
         control_freq: int = 20, # 20 Hz
         physics_dt: float = 0.002,
@@ -60,8 +56,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.control_freq = control_freq
         self.MAX_LINEAR_VELOCITY = _MAX_LINEAR_VELOCITY / control_freq
         self.MAX_ANGULAR_VELOCITY = _MAX_ANGULAR_VELOCITY / control_freq
-        self._action_scale = action_scale
-        self.gym_rate = RateLimiter(frequency=control_freq, warn=False)
 
         super().__init__(
             xml_path=_XML_PATH,
@@ -149,15 +143,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
                     "right/joint_qpos": spaces.Box(
                         -np.inf, np.inf, shape=(7,), dtype=np.float32
                     ),
-                    # "block_pose": spaces.Box( # world frame, pos + quat
-                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
-                    # ),
-                    # "block_pose_ego": spaces.Box( # head camera frame, pos + quat
-                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
-                    # ),
-                    # "block_pose_wrist": spaces.Box( # wrist frame, pos + quat
-                    #     -np.inf, np.inf, shape=(7,), dtype=np.float32
-                    # ),
                 }
             ),
             "images": gym.spaces.Dict(
@@ -229,58 +214,67 @@ class DualXarmsGymEnv(MujocoGymEnv):
             mink.VelocityLimit(self.model, self.velocity_limits),
             collision_avoidance_limit,
         ]
-        self.ik_rate = RateLimiter(frequency=200.0, warn=False)
-        self.ik_controller = IKController(
-            model=self._model, data=self._data,
-            configuration=self.ik_configuration,
-            actuator_ids=self.arm_actuator_ids, dof_ids=self.arm_dof_ids,
-            tasks=self.tasks, l_ee_task=self.l_ee_task, r_ee_task=self.r_ee_task,
-            ik_solver="quadprog", ik_limits=self.ik_limits,
-            ik_max_iters=2, pos_threshold=1e-2, ori_threshold=1e-2,
-            damping=1e-5, rate=self.ik_rate, human_viewer=self._viewer,
-        )
-        self.ik_thread = threading.Thread(target=self.ik_controller.run_ik, daemon=True)
-        self.run_ik = run_ik
-        self.is_ik_thread_running = False
+        self.ik_pos_threshold = 1e-2
+        self.ik_ori_threshold = 1e-2
+        self.ik_solver = "quadprog"
+        self.ik_rate = RateLimiter(200, name="IK Rate")  # 200 Hz
         self.step_counter = 0
+
+    def set_ik_targets(self, l_pos, l_quat, r_pos, r_quat, steps=5):
+        self.data.mocap_pos[0], self.data.mocap_quat[0] = l_pos, l_quat
+        self.data.mocap_pos[1], self.data.mocap_quat[1] = r_pos, r_quat
+        self.l_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "left/target"))
+        self.r_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "right/target"))
+        
+        for ik_step in range(steps):
+            for ik_iter in range(2):
+                vel = mink.solve_ik(
+                    self.ik_configuration,
+                    self.tasks,
+                    self.control_dt,
+                    self.ik_solver,
+                    limits=self.ik_limits,
+                    damping=1e-5,
+                )
+                self.ik_configuration.integrate_inplace(vel, self.ik_rate.dt)
+                l_err = self.l_ee_task.compute_error(self.ik_configuration)
+                r_err = self.r_ee_task.compute_error(self.ik_configuration)
+                if np.linalg.norm(l_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(l_err[3:]) <= self.ik_ori_threshold \
+                    and np.linalg.norm(r_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(r_err[3:]) <= self.ik_ori_threshold:
+                    break
+
+            self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
+            mujoco.mj_step(self.model, self.data)
+            if self._viewer and self._viewer.is_running():
+                self._viewer.sync()
 
     def reset(
         self, seed=None, **kwargs
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         """Reset the environment."""
         self.step_counter = 0
-        self.ik_controller.stop()
-        time.sleep(0.1)
-
         super().reset(seed=seed, **kwargs)
-        with self.ik_controller.lock:
-            mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_resetData(self._model, self._data)
 
-            # Reset arm to home position.
-            self._data.qpos[self.arm_dof_ids] = _HOME_JOINT_QPOS
-            mujoco.mj_forward(self._model, self._data)
+        # Reset arm to home position.
+        self._data.qpos[self.arm_dof_ids] = _HOME_JOINT_QPOS
+        mujoco.mj_forward(self._model, self._data)
 
-            # Reset mocap body to home position.
-            self._data.mocap_pos[0], self._data.mocap_quat[0] = LEFT_HOME[:3], LEFT_HOME[3:]
-            self._data.mocap_pos[1], self._data.mocap_quat[1] = RIGHT_HOME[:3], RIGHT_HOME[3:]
-            mujoco.mj_forward(self._model, self._data)
+        # Reset mocap body to home position.
+        self._data.mocap_pos[0], self._data.mocap_quat[0] = LEFT_HOME[:3], LEFT_HOME[3:]
+        self._data.mocap_pos[1], self._data.mocap_quat[1] = RIGHT_HOME[:3], RIGHT_HOME[3:]
+        mujoco.mj_forward(self._model, self._data)
 
-            # Sample a new block position.
-            block_xy = np.random.uniform(*_SAMPLING_BOUNDS)
-            self._data.jnt("block").qpos[:3] = (*block_xy, 0.02)
-            mujoco.mj_forward(self._model, self._data)
+        # Sample a new block position.
+        # block_xy = np.random.uniform(*_SAMPLING_BOUNDS)
+        # self._data.jnt("block").qpos[:3] = (*block_xy, 0.02)
+        # mujoco.mj_forward(self._model, self._data)
 
-            self.ik_configuration.update(self._data.qpos)
-            self.posture_task.set_target_from_configuration(self.ik_configuration)
-            self.ik_controller.set_targets(
-                LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
-            )
-            if not self.is_ik_thread_running and self.run_ik:
-                self.ik_thread.start()
-                self.is_ik_thread_running = True
-
-        self.ik_controller.start()
-        time.sleep(0.1)
+        self.ik_configuration.update(self._data.qpos)
+        self.posture_task.set_target_from_configuration(self.ik_configuration)
+        # self.set_ik_targets(
+        #     LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
+        # )
 
         obs = self._compute_observation()
         return obs, {}
@@ -302,36 +296,25 @@ class DualXarmsGymEnv(MujocoGymEnv):
             truncated: bool,
             info: dict[str, Any]
         """
-        left_tcp_pos_delta = action[:3]
-        left_tcp_euler_delta = action[3:6]
-        right_tcp_pos_delta = action[7:10]
-        right_tcp_euler_delta = action[10:13]
+        left_tcp_pos_delta = self.limit_offset_norm(action[:3], self.MAX_LINEAR_VELOCITY)
+        left_tcp_euler_delta = self.limit_offset_norm(action[3:6], self.MAX_ANGULAR_VELOCITY)
+        right_tcp_pos_delta = self.limit_offset_norm(action[7:10], self.MAX_LINEAR_VELOCITY)
+        right_tcp_euler_delta = self.limit_offset_norm(action[10:13], self.MAX_ANGULAR_VELOCITY)
 
         # # Set the mocap position.
         left_pos = self._data.mocap_pos[0].copy()
-        left_dpos = self.limit_offset_norm(
-            left_tcp_pos_delta * self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
-        )
-        left_npos = np.clip(left_pos + left_dpos, *LEFT_CARTESIAN_BOUNDS)
-
+        left_npos = np.clip(left_pos + left_tcp_pos_delta, *LEFT_CARTESIAN_BOUNDS)
         left_quat = self._data.mocap_quat[0].copy()
-        left_dquat = R.from_euler("xyz", self.limit_offset_norm(
-            left_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
-        )
+        left_dquat = R.from_euler("xyz", left_tcp_euler_delta)
         left_nquat = (left_dquat * R.from_quat(left_quat, scalar_first=True)).as_quat(scalar_first=True)
 
         right_pos = self._data.mocap_pos[1].copy()
-        right_dpos = self.limit_offset_norm(
-            right_tcp_pos_delta*self.MAX_LINEAR_VELOCITY, self.MAX_LINEAR_VELOCITY
-        )
-        right_npos = np.clip(right_pos + right_dpos, *RIGHT_CARTESIAN_BOUNDS)
+        right_npos = np.clip(right_pos + right_tcp_pos_delta, *RIGHT_CARTESIAN_BOUNDS)
         right_quat = self._data.mocap_quat[1].copy()
-        right_dquat = R.from_euler("xyz", self.limit_offset_norm(
-            right_tcp_euler_delta*self.MAX_ANGULAR_VELOCITY, self.MAX_ANGULAR_VELOCITY)
-        )
+        right_dquat = R.from_euler("xyz", right_tcp_euler_delta)
         right_nquat = (right_dquat * R.from_quat(right_quat, scalar_first=True)).as_quat(scalar_first=True)
 
-        self.ik_controller.set_targets(left_npos, left_nquat, right_npos, right_nquat)
+        self.set_ik_targets(left_npos, left_nquat, right_npos, right_nquat)
 
         # Set gripper grasp.
         left_g = self._data.ctrl[self._gripper_ctrl_ids[0]] / 255
@@ -349,8 +332,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
         done = True if rew == 4.0 else False
         self.step_counter += 1
         truncated = self.step_counter >= 1200
-        self.gym_rate.sleep()
-        # time.sleep(0.005)
         return obs, rew, done, truncated, {}
 
     # directly takes in joint angles from both arms and grippers, (16,)
@@ -368,7 +349,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
         done = True if rew == 4.0 else False
 
         self._viewer.sync()
-        # self.gym_rate.sleep()
         return obs, rew, done, False, {}
 
     def render(self):
@@ -384,41 +364,40 @@ class DualXarmsGymEnv(MujocoGymEnv):
         obs = {}
         obs["state"] = {}
 
-        with self.ik_controller.lock:
-            for side in ["left", "right"]:
-                # in world frame
-                tcp_pos = self._data.sensor(f"{side}/tcp_pos").data
-                tcp_quat = np.roll(self._data.sensor(f"{side}/tcp_quat").data, -1)
-                obs["state"][f"{side}/tcp_pose"] = np.concatenate([tcp_pos, tcp_quat]).astype(np.float32)
-                tcp_vel = self._data.sensor(f"{side}/tcp_vel").data
-                tcp_angvel = self._data.sensor(f"{side}/tcp_angvel").data
-                obs["state"][f"{side}/tcp_vel"] = np.concatenate([tcp_vel, tcp_angvel]).astype(np.float32)
+        for side in ["left", "right"]:
+            # in world frame
+            tcp_pos = self._data.sensor(f"{side}/tcp_pos").data
+            tcp_quat = np.roll(self._data.sensor(f"{side}/tcp_quat").data, -1)
+            obs["state"][f"{side}/tcp_pose"] = np.concatenate([tcp_pos, tcp_quat]).astype(np.float32)
+            tcp_vel = self._data.sensor(f"{side}/tcp_vel").data
+            tcp_angvel = self._data.sensor(f"{side}/tcp_angvel").data
+            obs["state"][f"{side}/tcp_vel"] = np.concatenate([tcp_vel, tcp_angvel]).astype(np.float32)
 
-                # in head camera frame
-                ego_tcp_pos = self._data.sensor(f"{side}/ego_tcp_pos").data
-                ego_tcp_quat = np.roll(self._data.sensor(f"{side}/ego_tcp_quat").data, -1)
-                obs["state"][f"{side}/ego_tcp_pose"] = np.concatenate([ego_tcp_pos, ego_tcp_quat]).astype(np.float32)
-                ego_tcp_vel = self._data.sensor(f"{side}/ego_tcp_vel").data
-                ego_tcp_angvel = self._data.sensor(f"{side}/ego_tcp_angvel").data
-                obs["state"][f"{side}/ego_tcp_vel"] = np.concatenate([ego_tcp_vel, ego_tcp_angvel]).astype(np.float32)
+            # in head camera frame
+            ego_tcp_pos = self._data.sensor(f"{side}/ego_tcp_pos").data
+            ego_tcp_quat = np.roll(self._data.sensor(f"{side}/ego_tcp_quat").data, -1)
+            obs["state"][f"{side}/ego_tcp_pose"] = np.concatenate([ego_tcp_pos, ego_tcp_quat]).astype(np.float32)
+            ego_tcp_vel = self._data.sensor(f"{side}/ego_tcp_vel").data
+            ego_tcp_angvel = self._data.sensor(f"{side}/ego_tcp_angvel").data
+            obs["state"][f"{side}/ego_tcp_vel"] = np.concatenate([ego_tcp_vel, ego_tcp_angvel]).astype(np.float32)
 
-                # relative to the other side tcp
-                wrt2other_tcp_pos = self._data.sensor(f"{side}/relative2_tcp_pos").data
-                wrt2other_tcp_quat = np.roll(self._data.sensor(f"{side}/relative2_tcp_quat").data, -1)
-                obs["state"][f"{side}/relative2_tcp_pose"] = np.concatenate([wrt2other_tcp_pos, wrt2other_tcp_quat]).astype(np.float32)
-                wrt2other_tcp_vel = self._data.sensor(f"{side}/relative2_tcp_vel").data
-                wrt2other_tcp_angvel = self._data.sensor(f"{side}/relative2_tcp_angvel").data
-                obs["state"][f"{side}/relative2_tcp_vel"] = np.concatenate([wrt2other_tcp_vel, wrt2other_tcp_angvel]).astype(np.float32)
+            # relative to the other side tcp
+            wrt2other_tcp_pos = self._data.sensor(f"{side}/relative2_tcp_pos").data
+            wrt2other_tcp_quat = np.roll(self._data.sensor(f"{side}/relative2_tcp_quat").data, -1)
+            obs["state"][f"{side}/relative2_tcp_pose"] = np.concatenate([wrt2other_tcp_pos, wrt2other_tcp_quat]).astype(np.float32)
+            wrt2other_tcp_vel = self._data.sensor(f"{side}/relative2_tcp_vel").data
+            wrt2other_tcp_angvel = self._data.sensor(f"{side}/relative2_tcp_angvel").data
+            obs["state"][f"{side}/relative2_tcp_vel"] = np.concatenate([wrt2other_tcp_vel, wrt2other_tcp_angvel]).astype(np.float32)
 
-                # joint qpos
-                joint_qpos = self._data.qpos[self.arm_dof_ids]
-                obs["state"][f"{side}/joint_qpos"] = joint_qpos[:7] if side == "left" else joint_qpos[7:]
+            # joint qpos
+            joint_qpos = self._data.qpos[self.arm_dof_ids]
+            obs["state"][f"{side}/joint_qpos"] = joint_qpos[:7] if side == "left" else joint_qpos[7:]
 
-            # gripper pos
-            obs["state"]["left/gripper_pos"] = np.array(
-                self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32)
-            obs["state"]["right/gripper_pos"] = np.array(
-                self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32)
+        # gripper pos
+        obs["state"]["left/gripper_pos"] = np.array(
+            self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32)
+        obs["state"]["right/gripper_pos"] = np.array(
+            self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32)
 
         if self.image_obs:
             obs["images"] = {}
@@ -435,11 +414,10 @@ class DualXarmsGymEnv(MujocoGymEnv):
     def _compute_reward(self) -> float:
         # Check if the block is in contact with the gripper
         all_contact_pairs = []
-        with self.ik_controller.lock:
-            for i in range(self.data.ncon):
-                contact = self.data.contact[i]
-                contact_pair = (self.model.geom(contact.geom1).name, self.model.geom(contact.geom2).name)
-                all_contact_pairs.append(contact_pair)
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            contact_pair = (self.model.geom(contact.geom1).name, self.model.geom(contact.geom2).name)
+            all_contact_pairs.append(contact_pair)
 
         cube_held_left = (("left/left_pad", "cube") in all_contact_pairs or \
                             ("left/left_pad_lower", "cube") in all_contact_pairs) and \
@@ -464,11 +442,8 @@ class DualXarmsGymEnv(MujocoGymEnv):
         return 0.0
 
     def close(self):
-        self.ik_controller.stop()
         if self.render_mode == "human":
             self._viewer.close()
-        if self.ik_thread.is_alive():
-            self.ik_thread.join(timeout=2)
         super().close()
 
     def limit_offset_norm(self, offset, max_offset):
@@ -481,12 +456,13 @@ class DualXarmsGymEnv(MujocoGymEnv):
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    env = DualXarmsGymEnv(control_freq=20, render_mode="human")
+    env = DualXarmsGymEnv(control_freq=60, render_mode="human")
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
+    human_rate = RateLimiter(60, name="Human Rate", warn=False)
     try:
-        env = OculusIntervention(env, freq=20)
+        env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
 
         obs, _ = env.reset()
@@ -497,7 +473,7 @@ if __name__ == "__main__":
             obs, rew, done, _, info = env.step(action)
             if "intervene_action" in info:
                 action = info["intervene_action"]
-            print(rew, done)
+            human_rate.sleep()
 
     except KeyboardInterrupt:
         env.close()
