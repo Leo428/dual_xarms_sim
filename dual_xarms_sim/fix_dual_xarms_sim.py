@@ -411,6 +411,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
 
         return obs
 
+    # TODO: update rewards for sim insertion task
     def _compute_reward(self) -> float:
         # Check if the block is in contact with the gripper
         all_contact_pairs = []
