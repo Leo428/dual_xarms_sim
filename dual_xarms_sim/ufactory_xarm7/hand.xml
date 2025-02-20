@@ -6,13 +6,16 @@
   <asset>
     <material name="white" rgba="1 1 1 1" />
     <material name="black" rgba="0.149 0.149 0.149 1" />
+    <material name="orange" rgba="1 0.5 0 1" />
 
     <mesh file="base_link.stl" />
     <mesh file="left_outer_knuckle.stl" />
     <mesh file="left_finger.stl" />
+    <mesh file="left_tiny_finger.stl" scale="0.001 0.001 0.001" />
     <mesh file="left_inner_knuckle.stl" />
     <mesh file="right_outer_knuckle.stl" />
     <mesh file="right_finger.stl" />
+    <mesh file="right_tiny_finger.stl" scale="0.001 0.001 0.001" />
     <mesh file="right_inner_knuckle.stl" />
   </asset>
 
@@ -24,13 +27,13 @@
       <general biastype="affine" forcerange="-50 50" ctrlrange="0 255" gainprm="0.333"
         biasprm="0 -100 -10" />
       <default class="spring_link">
-        <joint stiffness="0.05" springref="2.62" damping="0.00125" />
+        <joint armature="0.1" stiffness="0.05" springref="2.62" damping="0.00125" />
       </default>
       <default class="driver">
-        <joint armature="0.005" damping="0.1" solreflimit="0.005 1" />
+        <joint armature="0.1" damping="0.1" solreflimit="0.005 1" />
       </default>
       <default class="follower">
-        <joint solreflimit="0.005 1" />
+        <joint armature="0.1" solreflimit="0.005 1" />
       </default>
     </default>
   </default>
@@ -51,7 +54,7 @@
             mass="0.048304"
             diaginertia="1.88037e-05 1.7493e-05 3.56792e-06" />
           <joint name="left_finger_joint" axis="-1 0 0" class="follower" />
-          <geom material="black" mesh="left_finger" />
+          <geom material="black" mesh="left_tiny_finger" />
         </body>
       </body>
       <body name="left_inner_knuckle" pos="0 0.02 0.074098">
@@ -71,7 +74,8 @@
             mass="0.048304"
             diaginertia="1.88038e-05 1.7493e-05 3.56779e-06" />
           <joint name="right_finger_joint" class="follower" />
-          <geom material="black" mesh="right_finger" />
+          <!-- <geom material="black" mesh="right_finger" /> -->
+          <geom material="orange" mesh="right_tiny_finger" />
         </body>
       </body>
       <body name="right_inner_knuckle" pos="0 -0.02 0.074098">
