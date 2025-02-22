@@ -420,6 +420,12 @@ class DualXarmsGymEnv(MujocoGymEnv):
             contact_pair = (self.model.geom(contact.geom1).name, self.model.geom(contact.geom2).name)
             all_contact_pairs.append(contact_pair)
 
+        # print(all_contact_pairs)
+        for contact_pair in all_contact_pairs:
+            if contact_pair == ("peg", "left/socket/pin"):
+                print("Left peg inserted")
+            if contact_pair == ("peg", "right/socket/pin"):
+                print("right peg inserted")
         cube_held_left = (("left/left_pad", "cube") in all_contact_pairs or \
                             ("left/left_pad_lower", "cube") in all_contact_pairs) and \
                             (("left/right_pad", "cube") in all_contact_pairs or \
@@ -428,17 +434,17 @@ class DualXarmsGymEnv(MujocoGymEnv):
                             ("right/left_pad_lower", "cube") in all_contact_pairs) and \
                             (("right/right_pad", "cube") in all_contact_pairs or \
                             ("right/right_pad_lower", "cube") in all_contact_pairs)
-        cube_on_floor = ("floor", "cube") in all_contact_pairs
+        anything_on_floor = ("floor", "peg") in all_contact_pairs
 
-        if cube_held_right and (not cube_held_left):
-            if cube_on_floor:
-                return 1.0
-            return 2.0
-        elif cube_held_right and cube_held_left and (not cube_on_floor):
-            return 3.0
-        elif cube_held_left and not cube_held_right and (not cube_on_floor):
+        # if cube_held_right and (not cube_held_left):
+        #     if cube_on_floor:
+        #         return 1.0
+        #     return 2.0
+        # elif cube_held_right and cube_held_left and (not cube_on_floor):
+        #     return 3.0
+        # elif cube_held_left and not cube_held_right and (not cube_on_floor):
             
-            return 4.0
+        #     return 4.0
 
         return 0.0
 
