@@ -21,7 +21,9 @@ LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
 # RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
-_SAMPLING_BOUNDS = np.asarray([[0, 0.3], [0.2, 0.5]])
+_PEG_SAMPLING_BOUNDS = np.asarray([[-0.1, 0.2], [0.1, 0.4]]) # 20cm x 20cm
+_LEFT_SAMPLING_BOUNDS = np.asarray([[-0.4, 0.2], [-0.2, 0.4]]) # 20cm x 20cm
+_RIGHT_SAMPLING_BOUNDS = np.asarray([[0.2, 0.2], [0.4, 0.4]]) # 20cm x 20cm
 
 # Define joint names based on the xarm7 structure from your model
 _JOINT_NAMES = [
@@ -40,20 +42,22 @@ _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
 _MAX_LINEAR_VELOCITY = 1 # m/s
 _MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
 
-class DualXarmsGymEnv(MujocoGymEnv):
+class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
 
     def __init__(
         self,
         seed: int = 0,
-        control_freq: int = 20, # 20 Hz
+        control_freq: int = 60, # 60 Hz
+        time_limit: int = 2 * 60, # in seconds
         physics_dt: float = 0.002,
-        time_limit: float = 10.0,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
         image_obs: bool = True, run_ik: bool = True,
     ):
         self.control_freq = control_freq
+        self.step_counter = 0
+        self.MAX_STEPS = time_limit * control_freq
         self.MAX_LINEAR_VELOCITY = _MAX_LINEAR_VELOCITY / control_freq
         self.MAX_ANGULAR_VELOCITY = _MAX_ANGULAR_VELOCITY / control_freq
 
@@ -218,7 +222,6 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self.ik_ori_threshold = 1e-2
         self.ik_solver = "quadprog"
         self.ik_rate = RateLimiter(200, name="IK Rate")  # 200 Hz
-        self.step_counter = 0
 
     def set_ik_targets(self, l_pos, l_quat, r_pos, r_quat, steps=5):
         self.data.mocap_pos[0], self.data.mocap_quat[0] = l_pos, l_quat
@@ -265,16 +268,29 @@ class DualXarmsGymEnv(MujocoGymEnv):
         self._data.mocap_pos[1], self._data.mocap_quat[1] = RIGHT_HOME[:3], RIGHT_HOME[3:]
         mujoco.mj_forward(self._model, self._data)
 
-        # Sample a new block position.
-        # block_xy = np.random.uniform(*_SAMPLING_BOUNDS)
-        # self._data.jnt("block").qpos[:3] = (*block_xy, 0.02)
-        # mujoco.mj_forward(self._model, self._data)
+        # Sample a new peg position.
+        peg_xy = np.random.uniform(*_PEG_SAMPLING_BOUNDS)
+        peg_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        self._data.jnt("peg").qpos[:3] = (*peg_xy, 0.1)
+        self._data.jnt("peg").qpos[3:] = R.from_euler("xyz", peg_rot).as_quat(scalar_first=True)
+        # Sample a new peg position.
+        left_socket_xy = np.random.uniform(*_LEFT_SAMPLING_BOUNDS)
+        left_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        self._data.jnt("left/socket/joint").qpos[:3] = (*left_socket_xy, 0.1)
+        self._data.jnt("left/socket/joint").qpos[3:] = R.from_euler("xyz", left_socket_rot).as_quat(scalar_first=True)
+        # Sample a new peg position.
+        right_socket_xy = np.random.uniform(*_RIGHT_SAMPLING_BOUNDS)
+        right_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        self._data.jnt("right/socket/joint").qpos[:3] = (*right_socket_xy, 0.1)
+        self._data.jnt("right/socket/joint").qpos[3:] = R.from_euler("xyz", right_socket_rot).as_quat(scalar_first=True)
+
+        mujoco.mj_forward(self._model, self._data)
 
         self.ik_configuration.update(self._data.qpos)
         self.posture_task.set_target_from_configuration(self.ik_configuration)
-        # self.set_ik_targets(
-        #     LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
-        # )
+        self.set_ik_targets(
+            LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
+        )
 
         obs = self._compute_observation()
         return obs, {}
@@ -331,7 +347,7 @@ class DualXarmsGymEnv(MujocoGymEnv):
         # terminated = self.time_limit_exceeded()
         done = True if rew == 4.0 else False
         self.step_counter += 1
-        truncated = self.step_counter >= 1200
+        truncated = self.step_counter >= self.MAX_STEPS
         return obs, rew, done, truncated, {}
 
     # directly takes in joint angles from both arms and grippers, (16,)
@@ -420,37 +436,39 @@ class DualXarmsGymEnv(MujocoGymEnv):
             contact_pair = (self.model.geom(contact.geom1).name, self.model.geom(contact.geom2).name)
             all_contact_pairs.append(contact_pair)
 
-        # print(all_contact_pairs)
+        left_peg_inserted, right_peg_inserted = False, False
+        right_socket_on_block, left_socket_on_block = False, False
         for contact_pair in all_contact_pairs:
             if contact_pair == ("peg", "left/socket/pin"):
-                print("Left peg inserted")
+                left_peg_inserted = True
             if contact_pair == ("peg", "right/socket/pin"):
-                print("right peg inserted")
-        cube_held_left = (("left/left_pad", "cube") in all_contact_pairs or \
-                            ("left/left_pad_lower", "cube") in all_contact_pairs) and \
-                            (("left/right_pad", "cube") in all_contact_pairs or \
-                            ("left/right_pad_lower", "cube") in all_contact_pairs)
-        cube_held_right = (("right/left_pad", "cube") in all_contact_pairs or \
-                            ("right/left_pad_lower", "cube") in all_contact_pairs) and \
-                            (("right/right_pad", "cube") in all_contact_pairs or \
-                            ("right/right_pad_lower", "cube") in all_contact_pairs)
-        anything_on_floor = ("floor", "peg") in all_contact_pairs
+                right_peg_inserted = True
+            if contact_pair == ("block", "left/socket/wall_1") or contact_pair == ("block", "left/socket/wall_2") or \
+                    contact_pair == ("block", "left/socket/wall_3") or contact_pair == ("block", "left/socket/wall_4"):
+                left_socket_on_block = True and self.data.body("left/socket").xpos[2] > 0.1
+            if contact_pair == ("block", "right/socket/wall_1") or contact_pair == ("block", "right/socket/wall_2") or \
+                    contact_pair == ("block", "right/socket/wall_3") or contact_pair == ("block", "right/socket/wall_4"):
+                right_socket_on_block = True and self.data.body("right/socket").xpos[2] > 0.1
 
-        # if cube_held_right and (not cube_held_left):
-        #     if cube_on_floor:
-        #         return 1.0
-        #     return 2.0
-        # elif cube_held_right and cube_held_left and (not cube_on_floor):
-        #     return 3.0
-        # elif cube_held_left and not cube_held_right and (not cube_on_floor):
-            
-        #     return 4.0
+        everything_on_block = left_peg_inserted and right_peg_inserted and left_socket_on_block and right_socket_on_block
+        everything_lifted = self.data.body("peg").xpos[2] > 0.1 and \
+                            self.data.body("left/socket").xpos[2] > 0.1 and \
+                            self.data.body("right/socket").xpos[2] > 0.1
 
+        if everything_on_block: # if everything is on the block
+            return 4.0
+        if left_peg_inserted and right_peg_inserted: # if both pegs are inserted
+            return 3.0
+        if everything_lifted: # if everything is lifted off the floor
+            return 2.0
+        if left_peg_inserted or right_peg_inserted: # if one peg is inserted
+            return 1.0
         return 0.0
 
     def close(self):
         if self.render_mode == "human":
             self._viewer.close()
+        self._renderer.close()
         super().close()
 
     def limit_offset_norm(self, offset, max_offset):
@@ -463,24 +481,29 @@ class DualXarmsGymEnv(MujocoGymEnv):
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    env = DualXarmsGymEnv(control_freq=60, render_mode="human")
+    env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="human")
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
     human_rate = RateLimiter(60, name="Human Rate", warn=False)
+    bar = tqdm(total=env.MAX_STEPS, desc="Env steps")
     try:
         env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
 
+        done, truncated = False, False
         obs, _ = env.reset()
-        obses = [obs]
 
-        for i in tqdm(range(100000)):
+        while not (done or truncated):
             action = env.action_space.sample() * 0
             obs, rew, done, _, info = env.step(action)
             if "intervene_action" in info:
                 action = info["intervene_action"]
+            if rew > 0:
+                print(rew)
+            bar.update(1)
             human_rate.sleep()
 
+        env.close()
     except KeyboardInterrupt:
         env.close()

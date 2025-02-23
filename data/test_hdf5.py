@@ -3,7 +3,7 @@ import imageio
 import cv2
 import h5py
 
-dataset_path = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_1126_hdf5/episode_21.hdf5"
+dataset_path = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0222_hdf5/episode_1.hdf5"
 with h5py.File(dataset_path, "r") as root:
     frames = []
     decompressed_images = {}
@@ -24,6 +24,8 @@ with h5py.File(dataset_path, "r") as root:
             decompressed_images["obses/images/right/wrist"][idx],
         ]
         frame = np.concatenate(frame, axis=1)
-        frames.append(frame[..., ::-1])
+        # no need to flip colors for sim data
+        frames.append(frame)
+        # frames.append(frame[..., ::-1])
 
-    imageio.mimsave("data_test_real_hdf5.mp4", frames, fps=50)
+    imageio.mimsave("sim_double_insert_hdf5_test_1.mp4", frames, fps=60)
