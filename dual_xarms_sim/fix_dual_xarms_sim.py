@@ -21,9 +21,9 @@ LEFT_CARTESIAN_BOUNDS = np.asarray([[-0.7, 0.2, 0], [0.1, 0.6, 0.3]])
 # LEFT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
 RIGHT_CARTESIAN_BOUNDS = np.asarray([[-0.1, 0.2, 0], [0.7, 0.6, 0.3]])
 # RIGHT_EULER_BOUNDS = np.asarray([[-np.pi, -np.pi, -np.pi], [np.pi, np.pi, np.pi]])
-_PEG_SAMPLING_BOUNDS = np.asarray([[-0.1, 0.2], [0.1, 0.4]]) # 20cm x 20cm
-_LEFT_SAMPLING_BOUNDS = np.asarray([[-0.4, 0.2], [-0.2, 0.4]]) # 20cm x 20cm
-_RIGHT_SAMPLING_BOUNDS = np.asarray([[0.2, 0.2], [0.4, 0.4]]) # 20cm x 20cm
+_PEG_SAMPLING_BOUNDS = np.asarray([[0 - 0.075, 0.3 - 0.075], [0 + 0.075, 0.3 + 0.075]]) # 15cm x 15cm
+_LEFT_SAMPLING_BOUNDS = np.asarray([[-0.2 - 0.075, 0.3 - 0.075], [-0.2 + 0.075, 0.3 + 0.075]]) # 15cm x 15cm
+_RIGHT_SAMPLING_BOUNDS = np.asarray([[0.2 - 0.075, 0.3 - 0.075], [0.2 + 0.075, 0.3 + 0.075]]) # 15cm x 15cm
 
 # Define joint names based on the xarm7 structure from your model
 _JOINT_NAMES = [
@@ -270,17 +270,17 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
 
         # Sample a new peg position.
         peg_xy = np.random.uniform(*_PEG_SAMPLING_BOUNDS)
-        peg_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        peg_rot = np.array([0, 0, np.random.uniform(-np.pi/4, np.pi/4)])
         self._data.jnt("peg").qpos[:3] = (*peg_xy, 0.1)
         self._data.jnt("peg").qpos[3:] = R.from_euler("xyz", peg_rot).as_quat(scalar_first=True)
         # Sample a new peg position.
         left_socket_xy = np.random.uniform(*_LEFT_SAMPLING_BOUNDS)
-        left_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        left_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/4, np.pi/4)])
         self._data.jnt("left/socket/joint").qpos[:3] = (*left_socket_xy, 0.1)
         self._data.jnt("left/socket/joint").qpos[3:] = R.from_euler("xyz", left_socket_rot).as_quat(scalar_first=True)
         # Sample a new peg position.
         right_socket_xy = np.random.uniform(*_RIGHT_SAMPLING_BOUNDS)
-        right_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/2, np.pi/2)])
+        right_socket_rot = np.array([0, 0, np.random.uniform(-np.pi/4, np.pi/4)])
         self._data.jnt("right/socket/joint").qpos[:3] = (*right_socket_xy, 0.1)
         self._data.jnt("right/socket/joint").qpos[3:] = R.from_euler("xyz", right_socket_rot).as_quat(scalar_first=True)
 
