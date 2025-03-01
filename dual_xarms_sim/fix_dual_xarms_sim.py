@@ -411,9 +411,9 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
 
         # gripper pos
         obs["state"]["left/gripper_pos"] = np.array(
-            self._data.ctrl[self._gripper_ctrl_ids[0]] / 255, dtype=np.float32)
+            (self._data.ctrl[self._gripper_ctrl_ids[0]] / 255,), dtype=np.float32)
         obs["state"]["right/gripper_pos"] = np.array(
-            self._data.ctrl[self._gripper_ctrl_ids[1]] / 255, dtype=np.float32)
+            (self._data.ctrl[self._gripper_ctrl_ids[1]] / 255,), dtype=np.float32)
 
         if self.image_obs:
             obs["images"] = {}

@@ -19,8 +19,11 @@ from tqdm import tqdm
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0226"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0226_hdf5/"
 
-npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226"
-hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226_hdf5/"
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226_hdf5/"
+
+npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0228"
+hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228_hdf5/"
 
 npz_files = glob.glob(os.path.join(npz_directory, "*.npz"))
 episode_id = 0 # the starting episode id
