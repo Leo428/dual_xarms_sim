@@ -1,0 +1,1 @@
+This human correction dataset is collected by Zheyuan Hu, using the checkpoint trained with no history, no ee pose, 128x128 images.
