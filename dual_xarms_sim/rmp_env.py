@@ -83,6 +83,18 @@ class RMPDualXArmsEnv(gym.Env):
                     "right/joint_qpos": spaces.Box(
                         -np.inf, np.inf, shape=(7,), dtype=np.float32
                     ),
+                    "left/target_tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "left/target_gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
+                    "right/target_tcp_pose": spaces.Box( # world frame, pos + quat
+                        -np.inf, np.inf, shape=(7,), dtype=np.float32
+                    ),
+                    "right/target_gripper_pos": spaces.Box(
+                        -np.inf, np.inf, shape=(1,), dtype=np.float32
+                    ),
                 }
             ),
             "images": gym.spaces.Dict(
@@ -204,6 +216,15 @@ class RMPDualXArmsEnv(gym.Env):
                     self.images[cam] = np.frombuffer(binary_data, dtype=np.uint8).reshape(360, 640, 3)
                 for k, v in robot_state.items():
                     self.robot_states[k] = np.array(v, dtype=np.float32)
+                # IMPORTANT: record the target tcp pose and gripper pos as well
+                self.robot_states["left/target_tcp_pose"] = self.left_target_tcp_pose
+                self.robot_states["left/target_gripper_pos"] = np.array(
+                    (self.left_target_gripper_pos,), dtype=np.float32
+                )
+                self.robot_states["right/target_tcp_pose"] = self.right_target_tcp_pose
+                self.robot_states["right/target_gripper_pos"] = np.array(
+                    (self.right_target_gripper_pos,), dtype=np.float32
+                )
 
                 self.frames_queue.put([
                     ("left/top", self.images["left/top"]),
@@ -268,17 +289,17 @@ class RMPDualXArmsEnv(gym.Env):
             left_dg = left_dg * 80
             left_target_gripper_pos = np.clip(left_gripper_pos + left_dg, 80, 840)
         else:
-            left_target_gripper_pos = 0
+            left_target_gripper_pos = np.array((0.0,), dtype=np.float32)
         if abs(right_dg) > 0.05:
             right_dg = right_dg * 80
             right_target_gripper_pos = np.clip(right_gripper_pos + right_dg, 80, 840)
         else:
-            right_target_gripper_pos = 0
+            right_target_gripper_pos = np.array((0.0,), dtype=np.float32)
 
         # Send action command to central server
         target_cmd = np.concat([
-            self.left_target_tcp_pose, [left_target_gripper_pos],
-            self.right_target_tcp_pose, [right_target_gripper_pos],
+            self.left_target_tcp_pose, left_target_gripper_pos,
+            self.right_target_tcp_pose, right_target_gripper_pos,
         ])
         self.action_cmd_pub.send_json(
             {

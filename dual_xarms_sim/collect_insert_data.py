@@ -10,8 +10,8 @@ from dual_xarms_sim.utils.network import get_oculus_reading
 
 if __name__ == "__main__":
     task_name = "sim_dual_xarms_double_insert"
-    env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="human")
-    episodes_progress_bar = tqdm(range(10), desc="Episodes")
+    env = DoubleInsertDualXarmsGymEnv(control_freq=60, time_limit=2*60, render_mode="human")
+    episodes_progress_bar = tqdm(range(2), desc="Episodes")
     step_progress_bar = tqdm(env.MAX_STEPS, desc="Steps")
 
     env = OculusIntervention(env, freq=60)
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 is_save_data = input("Finished episode. Save data? (y/n): ")
                 if is_save_data.lower() == "y":
                     file_name = f"{task_name}_{time.strftime('%Y%m%d_%H%M%S')}.npz"
-                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0228/" + file_name
+                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228/" + file_name
                     print(f"Saving data to {file_name}")
                     with open(file_name, "wb") as f:
                         np.savez(f, 

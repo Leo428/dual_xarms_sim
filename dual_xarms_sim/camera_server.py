@@ -4,50 +4,71 @@ from loop_rate_limiters import RateLimiter
 import cv2
 from tqdm import tqdm
 import zmq
+import json
 
 _REALSENSE_CAMERAS = OrderedDict({
     "left/wrist": "130322273478",
     "right/wrist": "128422272097",
 })
 
-import queue
-import threading
 import time
 
 import numpy as np
 import pyrealsense2 as rs  # Intel RealSense cross-platform open-source API
 import pyzed.sl as sl
 
+jsonObj = json.load(open("/home/huzheyuan/dual_xarms/dual_xarms_sim/test800.json"))
+json_string= str(jsonObj).replace("'", '\"').strip()
+
 class RSCapture:
     def get_device_serial_numbers(self):
         devices = rs.context().devices
-        return [d.get_info(rs.camera_info.serial_number) for d in devices]
+        return {d.get_info(rs.camera_info.serial_number): d for d in devices}
 
     def __init__(self, name, serial_number, dim=(640, 360), fps=60, depth=False):
         self.name = name
-        assert serial_number in self.get_device_serial_numbers()
+        devices = self.get_device_serial_numbers()
+        assert serial_number in devices
         self.serial_number = serial_number
+        try:
+            ser_dev = rs.serializable_device(devices[self.serial_number])
+            ser_dev.load_json(json_string)
+            print("loaded json")
+        except Exception as e:
+            raise e
         self.depth = depth
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
         self.cfg.enable_device(self.serial_number)
         self.cfg.enable_stream(rs.stream.color, dim[0], dim[1], rs.format.bgr8, fps)
-        if self.depth:
-            self.cfg.enable_stream(rs.stream.depth, dim[0], dim[1], rs.format.z16, fps)
+        self.cfg.enable_stream(rs.stream.depth, dim[0], dim[1], rs.format.z16, fps)
         self.profile = self.pipe.start(self.cfg)
         self.device = self.profile.get_device()
-        self.sensor = self.device.first_depth_sensor()
+        # self.sensor = self.device.first_depth_sensor()
+        # self.sensor.set_option(rs.option.enable_auto_exposure, True)
+        # self.sensor.set_option(rs.option.enable_auto_white_balance, True)
+        # self.advnc_mode.load_json(json_string)
+        # for loop_id in range(100):
+        #     # Read-modify-write of the AE control table
+        #     ae_ctrl = self.advnc_mode.get_ae_control()
+        #     if ae_ctrl.meanIntensitySetPoint == 500 and loop_id > 5:
+        #         print("setting meanIntensitySetPoint SUCCESS\n\n")
+        #         break
+        #     else:
+        #         ae_ctrl.meanIntensitySetPoint = 500
+        #         self.advnc_mode.set_ae_control(ae_ctrl)
+        #         print("attempted setting meanIntensitySetPoint")
+        #         time.sleep(0.5)
+
         # self.sensor.set_option(rs.option.frames_queue_size, 1)
-        self.sensor.set_option(rs.option.enable_auto_exposure, True)
-        self.sensor.set_option(rs.option.enable_auto_white_balance, True)
         # self.sensor.set_option(rs.option.exposure, 10000)
         # self.sensor.set_option(rs.option.white_balance, 4000)
 
         # Create an align object
         # rs.align allows us to perform alignment of depth frames to others frames
         # The "align_to" is the stream type to which we plan to align depth frames.
-        align_to = rs.stream.color
-        self.align = rs.align(align_to)
+        # align_to = rs.stream.color
+        # self.align = rs.align(align_to)
 
     def read(self):
         try:
@@ -55,9 +76,9 @@ class RSCapture:
         except Exception as e:
             print(self.name, e)
             return False, None
-        # color_frame = frames.get_color_frame()
-        aligned_frames = self.align.process(frames)
-        color_frame = aligned_frames.get_color_frame()
+        color_frame = frames.get_color_frame()
+        # aligned_frames = self.align.process(frames)
+        # color_frame = aligned_frames.get_color_frame()
         # if self.depth:
         #     depth_frame = aligned_frames.get_depth_frame()
 
@@ -86,9 +107,9 @@ if __name__ == "__main__":
     ctx = rs.context()
     devices = ctx.query_devices()
     [print(device) for device in devices]
-    for dev in devices:
-        dev.hardware_reset()
-        time.sleep(2)
+    # for dev in devices:
+    #     dev.hardware_reset()
+    #     time.sleep(2)
 
     zed = sl.Camera()
 

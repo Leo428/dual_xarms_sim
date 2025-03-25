@@ -25,17 +25,49 @@ from tqdm import tqdm
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0228"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228_hdf5/"
 
-npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304"
-hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304_hdf5/"
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0311"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0311_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_riya_0312"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_riya_0312_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_robyn_0324"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_robyn_0324_hdf5/"
+
+npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325"
+hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325_hdf5/"
 
 npz_files = glob.glob(os.path.join(npz_directory, "*.npz"))
 episode_id = 0 # the starting episode id
+
+IS_INTERVENTION = False #True
+total_intervention = 0
 
 for filename in tqdm(npz_files):
     try:
         print(f"Processing file: {filename}")
         with np.load(filename, allow_pickle=True) as data:
             # Create an HDF5 file to store the data
+            if IS_INTERVENTION:
+                interventions = []
+                for step, info in enumerate(data['infos']):
+                    has_intervention = 'intervene_action' in info
+                    if step >= 60 and has_intervention:
+                        interventions.append(step)
+                print(f"episode {episode_id} has {len(interventions)} interventions")
+                total_intervention += len(interventions)
+                if len(interventions) == 0:
+                    print(f"episode {episode_id} has no interventions")
+                    continue
             hdf5_filename = f"episode_{episode_id}.hdf5"
             with h5py.File(hdf5_dir + hdf5_filename, 'w') as h5f:
                 # Save metadata
@@ -43,6 +75,8 @@ for filename in tqdm(npz_files):
                 metadata['task'] = 'real_xarms_shirt_hang_variations'
                 metadata['og_filename'] = filename
                 metadata['horizon'] = len(data['rews'])
+                if IS_INTERVENTION:
+                    metadata['interventions'] = np.array(interventions)
 
                 # Process observations
                 obses_list = data["obses"]  # List of observations
@@ -114,3 +148,5 @@ for filename in tqdm(npz_files):
     except Exception as e:
         print(f"Failed to process file: {filename}")
         raise e
+
+print(f"Total interventions: {total_intervention}")

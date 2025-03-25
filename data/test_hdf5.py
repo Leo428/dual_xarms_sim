@@ -4,8 +4,10 @@ import cv2
 import h5py
 from tqdm import tqdm
 
-for eps_id in tqdm(range(1)):
-    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304_hdf5/episode_{eps_id}.hdf5"
+BGR=True
+
+for eps_id in tqdm(range(15)):
+    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325_hdf5/episode_{eps_id}.hdf5"
     with h5py.File(dataset_path, "r") as root:
         frames = []
         decompressed_images = {}
@@ -26,8 +28,9 @@ for eps_id in tqdm(range(1)):
                 decompressed_images["obses/images/right/wrist"][idx],
             ]
             frame = np.concatenate(frame, axis=1)
-            # no need to flip colors for sim data
-            frames.append(frame)
-            # frames.append(frame[..., ::-1])
+            if BGR:
+                frames.append(frame[..., ::-1])
+            else:
+                frames.append(frame)
 
-        imageio.mimsave(f"sim_double_insert_0304_correction_hdf5_ep{eps_id}.mp4", frames, fps=60)
+        imageio.mimsave(f"real_hang_0324_robyn_ep{eps_id}.mp4", frames, fps=60)

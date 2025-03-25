@@ -18,7 +18,7 @@ if __name__ == "__main__":
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90] # tried as low as 20, seems fine
 
     episodes_progress_bar = tqdm(range(5), desc="Episodes")
-    step_progress_bar = tqdm(range(60 * 60 * 2), desc="Steps")
+    step_progress_bar = tqdm(range(60 * 60 * 3), desc="Steps")
 
     while episodes_progress_bar.n < episodes_progress_bar.total:
         try:
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 is_save_data = input("Finished episode. Save data? (y/n): ")
                 if is_save_data.lower() == "y":
                     file_name = f"{task_name}_{time.strftime('%Y%m%d_%H%M%S')}.npz"
-                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_0212/" + file_name
+                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325/" + file_name
                     print(f"Saving data to {file_name}")
                     with open(file_name, "wb") as f:
                         np.savez(f, 
