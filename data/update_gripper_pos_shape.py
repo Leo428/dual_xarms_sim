@@ -7,7 +7,7 @@ import glob
 from dual_xarms_sim.utils.transformation import compute_relative_poses_batch, compute_relative_velocities_batch
 
 if __name__ == "__main__":
-    hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0226_hdf5"
+    hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_riya_0312_hdf5"
     hdf5_files = glob.glob(os.path.join(hdf5_dir, "*.hdf5"))
 
     for filename in tqdm(hdf5_files):
@@ -20,11 +20,13 @@ if __name__ == "__main__":
                 left_gripper_pos = root["obses/state/left/gripper_pos"][()]
                 right_gripper_pos = root["obses/state/right/gripper_pos"][()]
 
-                if "gripper_pos" in left_group:
+                if left_gripper_pos.ndim == 1 and "gripper_pos" in left_group:
+                    print(f"fixed {filename} left gripper shape")
                     del left_group["gripper_pos"]
                     left_group.create_dataset("gripper_pos", data=left_gripper_pos[..., None])
 
-                if "gripper_pos" in right_group:
+                if right_gripper_pos.ndim == 1 and "gripper_pos" in right_group:
+                    print(f"fixed {filename} right gripper shape")
                     del right_group["gripper_pos"]
                     right_group.create_dataset("gripper_pos", data=right_gripper_pos[..., None])
 
