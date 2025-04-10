@@ -7,7 +7,7 @@ import glob
 from dual_xarms_sim.utils.transformation import compute_relative_poses_batch, compute_relative_velocities_batch
 
 if __name__ == "__main__":
-    hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_riya_0312_hdf5"
+    hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226_hdf5"
     hdf5_files = glob.glob(os.path.join(hdf5_dir, "*.hdf5"))
 
     for filename in tqdm(hdf5_files):

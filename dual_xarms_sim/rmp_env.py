@@ -22,7 +22,7 @@ _LEFT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, 0.381-0.381 - 0.25, 0], [0.38
 _RIGHT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, -0.381-0.381, 0], [0.381 + 0.03, -0.381 + 0.381 + 0.25, 0.6]])
 
 class ImageDisplayer(threading.Thread):
-    def __init__(self, queue):
+    def __init__(self, queue: queue.Queue):
         threading.Thread.__init__(self)
         self.queue = queue
         self.daemon = True  # make this a daemon thread

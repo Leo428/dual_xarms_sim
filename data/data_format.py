@@ -43,8 +43,17 @@ from tqdm import tqdm
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_robyn_0324"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_robyn_0324_hdf5/"
 
-npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325"
-hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325_hdf5/"
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_0325_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_riya_0327"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_riya_0327_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_jasmine_0331"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_jasmine_0331_hdf5/"
+
+npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403"
+hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403_hdf5/"
 
 npz_files = glob.glob(os.path.join(npz_directory, "*.npz"))
 episode_id = 0 # the starting episode id
