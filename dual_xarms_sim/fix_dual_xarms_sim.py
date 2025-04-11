@@ -228,23 +228,27 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         self.data.mocap_pos[1], self.data.mocap_quat[1] = r_pos, r_quat
         self.l_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "left/target"))
         self.r_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "right/target"))
-        
-        for ik_step in range(steps):
-            for ik_iter in range(2):
-                vel = mink.solve_ik(
-                    self.ik_configuration,
-                    self.tasks,
-                    self.control_dt,
-                    self.ik_solver,
-                    limits=self.ik_limits,
-                    damping=1e-5,
-                )
-                self.ik_configuration.integrate_inplace(vel, self.ik_rate.dt)
-                l_err = self.l_ee_task.compute_error(self.ik_configuration)
-                r_err = self.r_ee_task.compute_error(self.ik_configuration)
-                if np.linalg.norm(l_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(l_err[3:]) <= self.ik_ori_threshold \
-                    and np.linalg.norm(r_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(r_err[3:]) <= self.ik_ori_threshold:
-                    break
+
+        try:
+            for ik_step in range(steps):
+                for ik_iter in range(2):
+                    vel = mink.solve_ik(
+                        self.ik_configuration,
+                        self.tasks,
+                        self.control_dt,
+                        self.ik_solver,
+                        limits=self.ik_limits,
+                        damping=1e-5,
+                    )
+                    self.ik_configuration.integrate_inplace(vel, self.ik_rate.dt)
+                    l_err = self.l_ee_task.compute_error(self.ik_configuration)
+                    r_err = self.r_ee_task.compute_error(self.ik_configuration)
+                    if np.linalg.norm(l_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(l_err[3:]) <= self.ik_ori_threshold \
+                        and np.linalg.norm(r_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(r_err[3:]) <= self.ik_ori_threshold:
+                        break
+        except Exception as e:
+            # print(f"IK error: {e}")
+            pass
 
             self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
             mujoco.mj_step(self.model, self.data)
