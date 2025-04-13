@@ -247,13 +247,13 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
                         and np.linalg.norm(r_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(r_err[3:]) <= self.ik_ori_threshold:
                         break
         except Exception as e:
-            # print(f"IK error: {e}")
+            print(f"IK error: {e}")
             pass
 
-            self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
-            mujoco.mj_step(self.model, self.data)
-            if self._viewer and self._viewer.is_running():
-                self._viewer.sync()
+        self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
+        mujoco.mj_step(self.model, self.data)
+        if self._viewer and self._viewer.is_running():
+            self._viewer.sync()
 
     def reset(
         self, seed=None, **kwargs
