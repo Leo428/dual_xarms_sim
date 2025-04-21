@@ -229,9 +229,9 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         self.l_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "left/target"))
         self.r_ee_task.set_target(mink.SE3.from_mocap_name(self.model, self.data, "right/target"))
 
-        try:
-            for ik_step in range(steps):
-                for ik_iter in range(2):
+        for ik_step in range(steps):
+            for ik_iter in range(2):
+                try:
                     vel = mink.solve_ik(
                         self.ik_configuration,
                         self.tasks,
@@ -246,14 +246,15 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
                     if np.linalg.norm(l_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(l_err[3:]) <= self.ik_ori_threshold \
                         and np.linalg.norm(r_err[:3]) <= self.ik_pos_threshold and np.linalg.norm(r_err[3:]) <= self.ik_ori_threshold:
                         break
-        except Exception as e:
-            print(f"IK error: {e}")
-            pass
 
-        self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
-        mujoco.mj_step(self.model, self.data)
-        if self._viewer and self._viewer.is_running():
-            self._viewer.sync()
+                except Exception as e:
+                    print(f"IK error: {e}")
+                    pass
+
+            self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
+            mujoco.mj_step(self.model, self.data)
+            if self._viewer and self._viewer.is_running():
+                self._viewer.sync()
 
     def reset(
         self, seed=None, **kwargs
@@ -486,6 +487,7 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="human")
+    # env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="rgb_array")
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
