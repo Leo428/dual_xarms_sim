@@ -52,13 +52,19 @@ from tqdm import tqdm
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_jasmine_0331"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_jasmine_0331_hdf5/"
 
-npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403"
-hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403_hdf5/"
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_ood_0403_hdf5/"
+
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419_hdf5/"
+
+npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0420"
+hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0420_hdf5/"
 
 npz_files = glob.glob(os.path.join(npz_directory, "*.npz"))
 episode_id = 0 # the starting episode id
 
-IS_INTERVENTION = False #True
+IS_INTERVENTION = True #True
 total_intervention = 0
 
 for filename in tqdm(npz_files):

@@ -11,7 +11,7 @@ BGR=True
 crop = CenterCrop((360,360))
 
 for eps_id in tqdm(range(15)):
-    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419_hdf5/episode_{eps_id}.hdf5"
+    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_jasmine_0331_hdf5/episode_{eps_id}.hdf5"
     with h5py.File(dataset_path, "r") as root:
         frames = []
         decompressed_images = {}
@@ -28,7 +28,21 @@ for eps_id in tqdm(range(15)):
             decompressed_images[cam_name] = decompressed_frames
 
         horizon = len(decompressed_images["obses/images/left/top"])
+        # actions = root["actions"]["relative_action"][()]
+        left_tcp_vel = root["obses"]["state"]["left"]["wrist_tcp_vel"][()]
+        right_tcp_vel = root["obses"]["state"]["right"]["wrist_tcp_vel"][()]
+
+        tol = 1e-2
+        filtered_zero_counts = 0
         for idx in range(horizon):
+            if np.all(
+                    np.logical_and(
+                        np.abs(left_tcp_vel[idx]) < tol, np.abs(right_tcp_vel[idx]) < tol
+                    )
+                ):
+                filtered_zero_counts += 1
+                continue
+
             frame = [
                 decompressed_images["obses/images/left/top"][idx],
                 decompressed_images["obses/images/right/top"][idx],
@@ -47,4 +61,6 @@ for eps_id in tqdm(range(15)):
             else:
                 frames.append(frame)
 
-        imageio.mimsave(f"crop_real_hang_zheyuan_correction_0419_ep{eps_id}.mp4", frames, fps=60)
+        print(f"Filtered zero actions: {filtered_zero_counts} for episode {eps_id}")
+        filtered_zero_counts = 0
+        imageio.mimsave(f"filtered_crop_real_hang_jasmine_0331_ep{eps_id}.mp4", frames, fps=60)

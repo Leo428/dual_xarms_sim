@@ -53,9 +53,9 @@ def process_camera_images(image_dataset, episode_length, resize):
 if __name__ == "__main__":
     # Directory and file list
     # hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0226_hdf5'
-    hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228_hdf5'
+    # hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228_hdf5'
     # hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_riya_0312_hdf5'
-    # hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226_hdf5'
+    hdf5_dir = '/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_jasmine_0226_hdf5'
     hdf5_files = glob.glob(os.path.join(hdf5_dir, "*.hdf5"))
 
     # Define transforms

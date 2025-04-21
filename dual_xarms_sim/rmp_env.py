@@ -135,7 +135,7 @@ class RMPDualXArmsEnv(gym.Env):
         self.latency_running_avg = 0.0
         self.bar = tqdm(total=100000000, desc="freq:")
         self.step_count = 0
-        self.MAX_STEPS = 2 * 60 * self.control_freq
+        self.MAX_STEPS = 3 * 60 * self.control_freq
 
         self.frames_queue = queue.Queue(maxsize=10)
         self.displayer = ImageDisplayer(self.frames_queue)
