@@ -63,20 +63,23 @@ class RelativeFrame(gym.Wrapper):
             )
 
     def step(self, action: np.ndarray):
-        # action is assumed to be (x, y, z, rx, ry, rz, gripper)
-        # Transform action from end-effector frame to base frame
+        '''
+            action is assumed to be (x, y, z, rx, ry, rz, gripper)
+            the base frame for actions is w.r.t to the wrists's coordinate frame
+        '''
+        # Transform action from wrist's coordinate frame to robot base's coord frame
         transformed_action = self.transform_action(action)
 
         obs, reward, done, truncated, info = self.env.step(transformed_action)
 
         # this is to convert the spacemouse intervention action
         if "intervene_action" in info:
-            info["og_intervene_action"] = deepcopy(info["intervene_action"]) # TODO: test BUG FIX
+            info["og_intervene_action"] = deepcopy(info["intervene_action"])
             info["intervene_action"] = self.transform_action_inv(
                 info["intervene_action"]
             )
 
-        # Update adjoint matrix
+        # Update adjoint matrix, so that the new observation returned is updated accordingly
         self.adjoint_matrix = {
             "left": construct_adjoint_matrix(obs["state"]["left/tcp_pose"]),
             "right": construct_adjoint_matrix(obs["state"]["right/tcp_pose"]),
@@ -102,7 +105,7 @@ class RelativeFrame(gym.Wrapper):
             # Update adjoint matrix
             self.adjoint_matrix[side] = construct_adjoint_matrix(
                 obs["state"][f"{side}/wrist_tcp_pose"]
-            )   
+            )
             if self.include_relative_pose:
                 # Update transformation matrix from the reset pose's relative frame to base frame
                 self.T_r_o_inv[side] = np.linalg.inv(
@@ -138,20 +141,24 @@ class RelativeFrame(gym.Wrapper):
         Transform action from body(end-effector) frame into into spatial(base) frame
         using the adjoint matrix
         """
+        new_action = action.copy() # to avoid modifying the original action
         # left arm
-        action[:6] = self.adjoint_matrix["left"] @ action[:6]
+        new_action[:6] = self.adjoint_matrix["left"] @ action[:6]
         # right arm
-        action[7:13] = self.adjoint_matrix["right"] @ action[7:13]
-        return action
+        new_action[7:13] = self.adjoint_matrix["right"] @ action[7:13]
+        return new_action
 
     def transform_action_inv(self, action: np.ndarray):
         """
         Transform action from spatial(base) frame into body(end-effector) frame
         using the adjoint matrix.
         """
-        action[:6] = np.linalg.inv(self.adjoint_matrix["left"]) @ action[:6]
-        action[7:13] = np.linalg.inv(self.adjoint_matrix["right"]) @ action[7:13]
-        return action
+        new_action = action.copy() # to avoid modifying the original action
+        # left arm
+        new_action[:6] = np.linalg.inv(self.adjoint_matrix["left"]) @ action[:6]
+        # right arm
+        new_action[7:13] = np.linalg.inv(self.adjoint_matrix["right"]) @ action[7:13]
+        return new_action
 
 class WristRelativeTo(gym.ObservationWrapper):
     """
