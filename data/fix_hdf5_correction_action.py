@@ -26,7 +26,7 @@ ABS_ACTIONS_PATH = "actions/global_action"
 
 os.makedirs(DST_DIR, exist_ok=True)
 
-for src_fp in glob.glob(os.path.join(SRC_DIR, "*.hdf5")):
+for src_fp in tqdm(glob.glob(os.path.join(SRC_DIR, "*.hdf5"))):
     file_name = os.path.basename(src_fp)
     dst_file_path = os.path.join(DST_DIR, file_name)
     print(f"Processing {file_name} → {dst_file_path}")
