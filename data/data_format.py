@@ -58,19 +58,19 @@ from tqdm import tqdm
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419_hdf5/"
 
-# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0420"
-# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0420_hdf5/"
+npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0423"
+hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0423_hdf5/"
 
 # npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_action_coord_frame_bugfix"
 # hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_action_coord_frame_bugfix_hdf5/"
 
-npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed"
-hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed_hdf5/"
+# npz_directory = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed"
+# hdf5_dir = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed_hdf5/"
 
 npz_files = glob.glob(os.path.join(npz_directory, "*.npz"))
 episode_id = 0 # the starting episode id
 
-IS_INTERVENTION = True #True
+IS_INTERVENTION = True #True #False
 total_intervention = 0
 
 for filename in tqdm(npz_files):

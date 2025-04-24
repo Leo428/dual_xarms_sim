@@ -47,6 +47,7 @@ class RMPDualXArmsEnv(gym.Env):
     def __init__(self,
         seed: int = 0,
         control_freq: int = 60, # Hz
+        time_limit: int = 3 * 60, # 3 minutes
         max_linear_velocity: float = 1.0, # m/s
         max_angular_velocity: float = np.pi/3, # rad/s
     ):
@@ -135,7 +136,7 @@ class RMPDualXArmsEnv(gym.Env):
         self.latency_running_avg = 0.0
         self.bar = tqdm(total=100000000, desc="freq:")
         self.step_count = 0
-        self.MAX_STEPS = 3 * 60 * self.control_freq
+        self.MAX_STEPS = time_limit * control_freq
 
         self.frames_queue = queue.Queue(maxsize=10)
         self.displayer = ImageDisplayer(self.frames_queue)

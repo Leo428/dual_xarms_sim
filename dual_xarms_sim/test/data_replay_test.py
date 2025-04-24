@@ -18,7 +18,9 @@ if __name__ == "__main__":
     # dataset replay actions
     import h5py
     eps_id = 40
-    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed_hdf5/episode_{eps_id}.hdf5"
+    dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0304_fixed_hdf5/episode_{eps_id}.hdf5"
+    # dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0311_fixed_hdf5/episode_{eps_id}.hdf5"
+    # dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed_hdf5/episode_{eps_id}.hdf5"
     # dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_action_coord_frame_bugfix_hdf5/episode_{eps_id}.hdf5"
     # dataset_path = f"/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_0226_hdf5/episode_{eps_id}.hdf5"
     with h5py.File(dataset_path, "r") as root:
