@@ -15,6 +15,9 @@ from dual_xarms_sim.utils.transformation import construct_adjoint_matrix
 # SRC_DIR = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_hdf5"
 # DST_DIR = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_correction_0318_fixed_hdf5/"
 
+SRC_DIR = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419_hdf5/"
+DST_DIR = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/real_hang_zheyuan_correction_0419_fixed_hdf5/"
+
 # Dataset paths inside each HDF5 file — change these if your structure differs:
 LEFT_POSE_PATH  = "obses/state/left/tcp_pose"
 RIGHT_POSE_PATH = "obses/state/right/tcp_pose"
