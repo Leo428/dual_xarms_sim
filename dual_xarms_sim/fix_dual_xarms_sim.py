@@ -248,7 +248,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
                         break
 
                 except Exception as e:
-                    print(f"IK error: {e}")
+                    # print(f"IK error: {e}")
                     pass
 
             self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
@@ -350,7 +350,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         obs = self._compute_observation()
         rew = self._compute_reward()
         # terminated = self.time_limit_exceeded()
-        done = True if rew == 4.0 else False
+        done = True if rew == 3.0 else False
         self.step_counter += 1
         truncated = self.step_counter >= self.MAX_STEPS
         return obs, rew, done, truncated, {}
@@ -461,12 +461,11 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
                             self.data.body("right/socket").xpos[2] > 0.1
 
         if everything_on_block: # if everything is on the block
-            return 4.0
-        if left_peg_inserted and right_peg_inserted: # if both pegs are inserted
             return 3.0
-        if everything_lifted: # if everything is lifted off the floor
+        if left_peg_inserted and right_peg_inserted and everything_lifted:
+            # if both pegs are inserted and everything is lifted
             return 2.0
-        if left_peg_inserted or right_peg_inserted: # if one peg is inserted
+        if left_peg_inserted or right_peg_inserted: # if left or right peg is inserted
             return 1.0
         return 0.0
 
@@ -492,7 +491,7 @@ if __name__ == "__main__":
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
     human_rate = RateLimiter(60, name="Human Rate", warn=False)
-    bar = tqdm(total=env.MAX_STEPS, desc="Env steps")
+    bar = tqdm(total=env.MAX_STEPS, desc="Reward: 0")
     try:
         env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
@@ -505,8 +504,8 @@ if __name__ == "__main__":
             obs, rew, done, _, info = env.step(action)
             if "intervene_action" in info:
                 action = info["intervene_action"]
-            if rew > 0:
-                print(rew)
+
+            bar.set_description(f"Reward: {rew}")
             bar.update(1)
             human_rate.sleep()
 
