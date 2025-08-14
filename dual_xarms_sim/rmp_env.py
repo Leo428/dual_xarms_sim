@@ -22,26 +22,99 @@ _LEFT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, 0.381-0.381 - 0.25, 0], [0.38
 _RIGHT_CARTESIAN_BOUNDS = np.array([[-0.3185 + 0.1, -0.381-0.381, 0], [0.381 + 0.03, -0.381 + 0.381 + 0.25, 0.6]])
 
 class ImageDisplayer(threading.Thread):
-    def __init__(self, queue: queue.Queue):
-        threading.Thread.__init__(self)
+    def __init__(self, queue: queue.Queue, heatmap_path: str = None):
+        super().__init__(daemon=True)
         self.queue = queue
-        self.daemon = True  # make this a daemon thread
+        self.show_overlay = False  # start with overlay hidden
+
+        # these will all be 360×360 if heatmap_path is given
+        self.heatmap_bgr    = None
+        self.expanded_alpha = None
+
+        if heatmap_path:
+            heatmap = cv2.imread(heatmap_path, cv2.IMREAD_UNCHANGED)
+            if heatmap is None:
+                raise RuntimeError(f"Failed to load heatmap from {heatmap_path}")
+
+            # split out alpha if present
+            if heatmap.shape[2] == 4:
+                hm_bgr   = heatmap[..., :3]
+                hm_alpha = heatmap[..., 3:] / 255.0
+            else:
+                hm_bgr   = heatmap
+                hm_alpha = np.ones(hm_bgr.shape[:2] + (1,), dtype=np.float32)
+
+            # First, get a 2D alpha map
+            alpha2d = hm_alpha.squeeze(-1)         # now shape (H, W)
+            # Resize that to 360×360 (still 2D)
+            resized_alpha2d = cv2.resize(
+                alpha2d,
+                (360, 360),
+                interpolation=cv2.INTER_LINEAR
+            )
+            # Now re-add the singleton channel dimension
+            self.expanded_alpha = 0.7 * resized_alpha2d[..., np.newaxis]  # -> (360,360,1)
+            # resize both to 360×360
+            self.heatmap_bgr    = cv2.resize(hm_bgr,   (360, 360), interpolation=cv2.INTER_LINEAR)
+
+            print(f"Loaded and resized heatmap to {self.heatmap_bgr.shape}")
+
+    def set_overlay_visible(self, visible: bool):
+        self.show_overlay = visible
+
+    @staticmethod
+    def _draw_vertical_dashed_line(img, x, color=(0,255,0), thickness=3, dash_length=10, gap_length=10):
+        h, _ = img.shape[:2]
+        y = 0
+        while y < h:
+            y_end = min(y + dash_length, h)
+            cv2.line(img, (x, y), (x, y_end), color, thickness)
+            y += dash_length + gap_length
 
     def run(self):
         while True:
-            bgrs = []
+            try:
+                cam_list = self.queue.get()
+                processed = []
 
-            cam_list = self.queue.get()
-            for data in cam_list:
-                name, bgr =  data # retrieve an image from the queue
-                if bgr.shape[0] == 720:
-                    # resize to 360x640
-                    bgr = cv2.resize(bgr, (640, 360))
-                bgrs.append(bgr)
+                for name, bgr in cam_list:
+                    # only overlay on the 'right/top' view, if heatmap is loaded and flagged
+                    if (
+                        self.show_overlay
+                        and name == "right/top"
+                        and self.heatmap_bgr is not None
+                    ):
+                        h_hm, w_hm = self.heatmap_bgr.shape[:2]
+                        h_img, w_img = bgr.shape[:2]
 
-            bgrs = np.vstack((np.hstack(bgrs[:2]), np.hstack(bgrs[2:])))
-            cv2.imshow("ZED Cameras (RGB)", bgrs)
-            cv2.waitKey(1)
+                        # compute offsets to center the 360×360 heatmap on the 360×640 image
+                        x0 = (w_img - w_hm) // 2
+                        y0 = (h_img - h_hm) // 2  # this will be 0 if heights match
+
+                        # blend in the region of interest
+                        roi       = bgr[y0:y0+h_hm, x0:x0+w_hm].astype(np.float32)
+                        hm_bgr    = self.heatmap_bgr.astype(np.float32)
+                        alpha     = self.expanded_alpha.astype(np.float32)
+
+                        blended   = (roi * (1 - alpha) + hm_bgr * alpha).astype(np.uint8)
+                        # copy result back
+                        out       = bgr.copy()
+                        out[y0:y0+h_hm, x0:x0+w_hm] = blended
+
+                        self._draw_vertical_dashed_line(out, x0)
+                        self._draw_vertical_dashed_line(out, x0 + w_hm)
+
+                        processed.append(out)
+                    else:
+                        processed.append(bgr)
+
+                canvas = np.vstack((np.hstack(processed[:2]), np.hstack(processed[2:])))
+                cv2.imshow("ZED Cameras (RGB)", canvas)
+                cv2.waitKey(1)
+            except Exception as e:
+                print(f"Error in ImageDisplayer: {e}")
+                break
+
 
 class RMPDualXArmsEnv(gym.Env):
     def __init__(self,
@@ -50,6 +123,7 @@ class RMPDualXArmsEnv(gym.Env):
         time_limit: int = 3 * 60, # 3 minutes
         max_linear_velocity: float = 1.0, # m/s
         max_angular_velocity: float = np.pi/3, # rad/s
+        overlay_heatmap: str = None,
     ):
         super().__init__()
         self.control_freq = control_freq
@@ -139,8 +213,8 @@ class RMPDualXArmsEnv(gym.Env):
         self.MAX_STEPS = time_limit * control_freq
 
         self.frames_queue = queue.Queue(maxsize=10)
-        self.displayer = ImageDisplayer(self.frames_queue)
-        self.displayer.start()
+        self._displayer = ImageDisplayer(self.frames_queue, overlay_heatmap)
+        self._displayer.start()
 
     def reset(
         self, seed=None, **kwargs
@@ -323,7 +397,7 @@ class RMPDualXArmsEnv(gym.Env):
     def close(self):
         self.action_cmd_pub.close()
         self.robot_state_sub.close()
-        self.displayer.join()
+        self._displayer.join()
 
     def seed(self, seed=None):
         pass
@@ -332,7 +406,10 @@ class RMPDualXArmsEnv(gym.Env):
 if __name__ == "__main__":
     from dual_xarms_sim.relative_frame import RelativeFrame, WristRelativeTo
     try:
-        env = RMPDualXArmsEnv(control_freq=60)
+        env = RMPDualXArmsEnv(
+                control_freq=60,
+                overlay_heatmap="/home/huzheyuan/dual_xarms/dual_xarms_sim/dual_xarms_sim/real_hang_r0.png"
+            )
         env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
         env = WristRelativeTo(env)
@@ -341,9 +418,19 @@ if __name__ == "__main__":
         done = False
         # import ipdb; ipdb.set_trace()
 
+        # For tracking intervention state to toggle overlay
+        prev_intervention_active = False
+
         while not done:
             action = env.action_space.sample() * 0
             obs, reward, done, truncated, info = env.step(action)
+
+            # Check if intervention state changed
+            intervention_active = "intervene_action" in info
+            if intervention_active != prev_intervention_active and hasattr(env.unwrapped, '_displayer') and env.unwrapped._displayer:
+                prev_intervention_active = intervention_active
+                # Toggle overlay visibility based on intervention state
+                env.unwrapped._displayer.set_overlay_visible(intervention_active)
             # print(info)
             # print(obs["state"].keys())
             # print(obs["images"].keys())

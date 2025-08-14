@@ -9,6 +9,9 @@ from gymnasium import spaces
 import mink
 from loop_rate_limiters import RateLimiter
 from scipy.spatial.transform import Rotation as R
+import queue
+import threading
+import cv2
 
 from dual_xarms_sim.mujoco_gym_env import GymRenderingSpec, MujocoGymEnv
 
@@ -42,6 +45,72 @@ _HOME_JOINT_CTRL = np.array([0.785398163, -0.247, 0, 0.909, 0, 1.15644, 0, 0])
 _MAX_LINEAR_VELOCITY = 1 # m/s
 _MAX_ANGULAR_VELOCITY = np.pi/3 # rad/s
 
+class ImageDisplayer(threading.Thread):
+    def __init__(self, queue: queue.Queue, heatmap_path: str = None, display_size=(672, 672)):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.daemon = True  # make this a daemon thread
+        self.heatmap = None
+        self.expanded_alpha = None
+        self.display_size = display_size  # Size to display the image (width, height)
+        self.window_initialized = False
+        self.show_overlay = False  # Start with overlay hidden
+
+        if heatmap_path:
+            try:
+                # Load heatmap and convert to BGR immediately
+                heatmap = cv2.imread(heatmap_path, cv2.IMREAD_UNCHANGED)
+                if heatmap is None:
+                    print(f"Failed to load heatmap from {heatmap_path}")
+                    return
+
+                # Process alpha channel if present
+                if heatmap.shape[2] == 4:
+                    self.heatmap_bgr = heatmap[:, :, :3]  # BGR format from OpenCV
+                    # Pre-expand alpha for faster blending
+                    self.expanded_alpha = np.expand_dims(heatmap[:, :, 3] / 255.0, axis=2)
+                else:
+                    self.heatmap_bgr = heatmap  # Already in BGR
+                    self.expanded_alpha = np.ones((heatmap.shape[0], heatmap.shape[1], 1))
+
+                print(f"Loaded heatmap with shape {self.heatmap_bgr.shape}")
+            except Exception as e:
+                print(f"Error loading heatmap: {e}")
+
+    def set_overlay_visible(self, visible):
+        """Toggle visibility of the heatmap overlay"""
+        self.show_overlay = visible
+
+    def run(self):
+        # Create a resizable window
+        cv2.namedWindow("Camera View", cv2.WINDOW_NORMAL)
+        while True:
+            try:
+                name, rgb = self.queue.get()
+                # Convert RGB to BGR for OpenCV
+                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+                # Apply heatmap overlay if available AND visibility is enabled
+                if self.expanded_alpha is not None and self.show_overlay:
+                    # Fast alpha blending with pre-calculated alpha
+                    bgr = (bgr * (1 - self.expanded_alpha) + 
+                           self.heatmap_bgr * self.expanded_alpha).astype(np.uint8)
+                
+                # Resize for display (maintain aspect ratio)
+                display_img = cv2.resize(bgr, self.display_size)
+                
+                # If first run, set window size
+                if not self.window_initialized:
+                    cv2.resizeWindow("Camera View", self.display_size[0], self.display_size[1])
+                    self.window_initialized = True
+                
+                cv2.imshow("Camera View", display_img)
+                cv2.waitKey(1)
+                
+            except Exception as e:
+                print(f"Error in ImageDisplayer: {e}")
+                continue
+
 class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
     metadata = {"render_modes": ["rgb_array", "human"]}
 
@@ -53,7 +122,9 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         physics_dt: float = 0.002,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
-        image_obs: bool = True, run_ik: bool = True,
+        image_obs: bool = True, 
+        run_ik: bool = True,
+        overlay_heatmap: str = None,
     ):
         self.control_freq = control_freq
         self.step_counter = 0
@@ -80,6 +151,29 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         self.render_mode = render_mode
         self.camera_names = ["left/top", "left/wrist", "right/top", "right/wrist"]
         self.image_obs = image_obs
+        self._viewer = None
+
+                 # Initialize display for overlay mode
+        self._use_overlay = render_mode == "human" and overlay_heatmap is not None
+        self._frames_queue = None
+        self._displayer = None
+
+        if render_mode == "human":
+            if overlay_heatmap is not None:
+                self._frames_queue = queue.Queue(maxsize=10)
+                # Use a larger display size (3x the original size)
+                self._displayer = ImageDisplayer(
+                    self._frames_queue, 
+                    overlay_heatmap,
+                    display_size=(224 * 3, 224 * 3)
+                )
+                self._displayer.start()
+            else:
+                import mujoco.viewer
+                self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
+        
+        # Initialize renderer for all render modes
+        self._renderer = Renderer(self.model, width=render_spec.width, height=render_spec.height)
 
         joint_names = []
         self.velocity_limits = {}
@@ -167,12 +261,6 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
             dtype=np.float32,
         )
 
-        if self.render_mode == "human":
-            import mujoco.viewer
-            self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
-
-        self._renderer = Renderer(self.model, width=render_spec.width, height=render_spec.height)
-
         self.ik_configuration = mink.Configuration(self.model)
         # Task definitions using mink library
         self.l_ee_task = mink.FrameTask(
@@ -253,9 +341,25 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
 
             self.data.ctrl[self.arm_actuator_ids] = self.ik_configuration.q[self.arm_dof_ids]
             mujoco.mj_step(self.model, self.data)
-            if self._viewer and self._viewer.is_running():
+            
+            # Update viewers/displays
+            if self._use_overlay and self._frames_queue is not None:
+                self._update_overlay()
+            elif self._viewer and self._viewer.is_running():
                 self._viewer.sync()
 
+    def _update_overlay(self):
+        """Update the overlay display with the current frame"""
+        try:
+            frames = self.render()
+            # Find the right/top camera frame
+            for i, cam_name in enumerate(self.camera_names):
+                if cam_name == "right/top":
+                    self._frames_queue.put(("right/top", frames[i]), block=False)
+                    break
+        except queue.Full:
+            pass  # Skip frame if queue is full
+        
     def reset(
         self, seed=None, **kwargs
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -296,6 +400,10 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         self.set_ik_targets(
             LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
         )
+
+        # Update the overlay if using it
+        if self._use_overlay:
+            self._update_overlay()
 
         obs = self._compute_observation()
         return obs, {}
@@ -353,6 +461,11 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         done = True if rew == 3.0 else False
         self.step_counter += 1
         truncated = self.step_counter >= self.MAX_STEPS
+        
+        # Update the overlay display if needed
+        if self._use_overlay:
+            self._update_overlay()
+            
         return obs, rew, done, truncated, {}
 
     # directly takes in joint angles from both arms and grippers, (16,)
@@ -360,7 +473,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         left_gripper = action[7]
         right_gripper = action[15]
         for _ in range(10):
-            self.data.ctrl[self.arm_actuator_ids] = np.concat((action[:7], action[8:15]))
+            self.data.ctrl[self.arm_actuator_ids] = np.concatenate((action[:7], action[8:15]))
             self.data.ctrl[self._gripper_ctrl_ids[0]] = left_gripper * 255
             self.data.ctrl[self._gripper_ctrl_ids[1]] = right_gripper * 255
             mujoco.mj_step(self.model, self.data)
@@ -369,7 +482,12 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         rew = self._compute_reward()
         done = True if rew == 4.0 else False
 
-        self._viewer.sync()
+        # Update viewer or overlay
+        if self._use_overlay:
+            self._update_overlay()
+        elif self._viewer and self._viewer.is_running():
+            self._viewer.sync()
+            
         return obs, rew, done, False, {}
 
     def render(self):
@@ -377,6 +495,17 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         for cam_name in self.camera_names:
             self._renderer.update_scene(self.data, camera=cam_name)
             rendered_frames.append(self._renderer.render())
+            
+        # If in overlay mode, update the display
+        if self._use_overlay and self._frames_queue is not None:
+            try:
+                for i, cam_name in enumerate(self.camera_names):
+                    if cam_name == "right/top":
+                        self._frames_queue.put(("right/top", rendered_frames[i]), block=False)
+                        break
+            except queue.Full:
+                pass  # Skip frame if queue is full
+            
         return rendered_frames
 
     def _compute_observation(self) -> dict:
@@ -420,15 +549,10 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         obs["state"]["right/gripper_pos"] = np.array(
             (self._data.ctrl[self._gripper_ctrl_ids[1]] / 255,), dtype=np.float32)
 
-        if self.image_obs:
-            obs["images"] = {}
-            images = self.render()
-            for cam_name in self.camera_names:
-                obs["images"][cam_name] = images.pop(0)
-
-        # else:
-        #     block_pos = self._data.sensor("block_pos").data.astype(np.float32)
-        #     obs["state"]["block_pos"] = block_pos
+        obs["images"] = {}
+        images = self.render()
+        for cam_name in self.camera_names:
+            obs["images"][cam_name] = images.pop(0)
 
         return obs
 
@@ -470,7 +594,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         return 0.0
 
     def close(self):
-        if self.render_mode == "human":
+        if self._viewer:
             self._viewer.close()
         self._renderer.close()
         super().close()
@@ -485,13 +609,25 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="human")
+    # Example usage:
+    # env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="human")  # Original mujoco viewer
+    env = DoubleInsertDualXarmsGymEnv(
+        control_freq=60,
+        render_mode="human",
+        overlay_heatmap="/home/huzheyuan/sam2/notebooks/heatmap_combined_all_dirs_combined_overlay.png"
+        # overlay_heatmap="/home/huzheyuan/Downloads/output_dots_overlay_224x224.png"
+        # overlay_heatmap="/home/huzheyuan/Downloads/robyn.png"
+    )  # With overlay
+
+    # Create environment with desired settings
     # env = DoubleInsertDualXarmsGymEnv(control_freq=60, render_mode="rgb_array")
+    
     from dual_xarms_sim.relative_frame import RelativeFrame
     from dual_xarms_sim.oculus_intervention import OculusIntervention
 
     human_rate = RateLimiter(60, name="Human Rate", warn=False)
     bar = tqdm(total=env.MAX_STEPS, desc="Reward: 0")
+    
     try:
         env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
@@ -499,9 +635,20 @@ if __name__ == "__main__":
         done, truncated = False, False
         obs, _ = env.reset()
 
+        # For tracking intervention state to toggle overlay
+        prev_intervention_active = False
+
         while not (done or truncated):
             action = env.action_space.sample() * 0
-            obs, rew, done, _, info = env.step(action)
+            obs, rew, done, truncated, info = env.step(action)
+            
+            # Check if intervention state changed
+            intervention_active = "intervene_action" in info
+            if intervention_active != prev_intervention_active and hasattr(env.unwrapped, '_displayer') and env.unwrapped._displayer:
+                prev_intervention_active = intervention_active
+                # Toggle overlay visibility based on intervention state
+                env.unwrapped._displayer.set_overlay_visible(intervention_active)
+                
             if "intervene_action" in info:
                 action = info["intervene_action"]
 

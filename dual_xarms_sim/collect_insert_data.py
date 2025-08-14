@@ -2,6 +2,7 @@ from tqdm import tqdm
 import numpy as np
 import time
 import cv2
+from loop_rate_limiters import RateLimiter
 
 from dual_xarms_sim.fix_dual_xarms_sim import DoubleInsertDualXarmsGymEnv
 from dual_xarms_sim.relative_frame import RelativeFrame
@@ -11,8 +12,9 @@ from dual_xarms_sim.utils.network import get_oculus_reading
 if __name__ == "__main__":
     task_name = "sim_dual_xarms_double_insert"
     env = DoubleInsertDualXarmsGymEnv(control_freq=60, time_limit=2*60, render_mode="human")
-    episodes_progress_bar = tqdm(range(2), desc="Episodes")
+    episodes_progress_bar = tqdm(range(50), desc="Episodes")
     step_progress_bar = tqdm(env.MAX_STEPS, desc="Steps")
+    human_rate = RateLimiter(60, name="Human Rate", warn=False)
 
     env = OculusIntervention(env, freq=60)
     env = RelativeFrame(env)
@@ -35,6 +37,7 @@ if __name__ == "__main__":
                 truncated = False
                 done = False
                 obses, actions, rews, dones, truncateds, infos = [], [], [], [], [], []
+                max_reward = 0
 
                 while not (truncated or done):
                     action = env.action_space.sample() * 0
@@ -46,6 +49,9 @@ if __name__ == "__main__":
                         result, encoded_image = cv2.imencode('.jpg', img, encode_param)
                         obs["images"][name] = encoded_image
 
+                    max_reward = max(max_reward, rew)
+                    episodes_progress_bar.set_description(f"Max Reward: {max_reward}")
+
                     obses.append(obs)
                     actions.append(action)
                     rews.append(rew)
@@ -56,11 +62,12 @@ if __name__ == "__main__":
                     step_progress_bar.update(1)
                     if done:
                         step_progress_bar.desc = "Task Completed"
+                    human_rate.sleep()
 
                 is_save_data = input("Finished episode. Save data? (y/n): ")
                 if is_save_data.lower() == "y":
                     file_name = f"{task_name}_{time.strftime('%Y%m%d_%H%M%S')}.npz"
-                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_robyn_0228/" + file_name
+                    file_name = "/home/huzheyuan/dual_xarms/dual_xarms_sim/data/sim_double_insert_zheyuan_0508/" + file_name
                     print(f"Saving data to {file_name}")
                     with open(file_name, "wb") as f:
                         np.savez(f, 
