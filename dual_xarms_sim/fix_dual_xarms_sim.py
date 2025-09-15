@@ -629,7 +629,7 @@ if __name__ == "__main__":
     bar = tqdm(total=env.MAX_STEPS, desc="Reward: 0")
     
     try:
-        env = OculusIntervention(env, freq=60)
+        # env = OculusIntervention(env, freq=60)
         env = RelativeFrame(env)
 
         done, truncated = False, False

@@ -32,6 +32,8 @@ dependencies = [
     "moviepy",
     "mink",
     "loop_rate_limiters",
+    "opencv-python",
+    "requests"
 ]
 keywords = ["robot simulator", "reinforcement learning",]
 
