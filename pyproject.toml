@@ -33,7 +33,8 @@ dependencies = [
     "mink",
     "loop_rate_limiters",
     "opencv-python",
-    "requests"
+    "requests",
+    "quadprog==0.1.13"
 ]
 keywords = ["robot simulator", "reinforcement learning",]
 
