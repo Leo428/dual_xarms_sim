@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Any, Literal, Tuple, Dict
 
-import gymnasium as gym
+# import gymnasium as gym
 import mujoco
 from mujoco import Renderer
 import numpy as np
-from gymnasium import spaces
+# from gymnasium import spaces
 import mink
 from loop_rate_limiters import RateLimiter
 from scipy.spatial.transform import Rotation as R
@@ -14,6 +14,7 @@ import threading
 import cv2
 
 from dual_xarms_sim.mujoco_gym_env import GymRenderingSpec, MujocoGymEnv
+
 
 _HERE = Path(__file__).parent
 _XML_PATH = _HERE / "ufactory_xarm7" / "insert_scene_yam.xml"
@@ -118,9 +119,6 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         physics_dt: float = 0.002,
         render_spec: GymRenderingSpec = GymRenderingSpec(height=224, width=224),
         render_mode: Literal["rgb_array", "human"] = "rgb_array",
-        image_obs: bool = True, 
-        run_ik: bool = True,
-        overlay_heatmap: str = None,
     ):
         self.control_freq = control_freq
         self.MAX_STEPS = time_limit * control_freq
@@ -143,27 +141,14 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
             "render_fps": int(control_freq),
         }
 
-        self.render_mode = render_mode
         self.camera_names = ["left/top", "left/wrist", "right/top", "right/wrist"]
-        self.image_obs = image_obs
         self._viewer = None
 
                  # Initialize display for overlay mode
-        self._use_overlay = render_mode == "human" and overlay_heatmap is not None
+        self._use_overlay = render_mode == "human"
         self._frames_queue = None
-        self._displayer = None
 
         if render_mode == "human":
-            if overlay_heatmap is not None:
-                self._frames_queue = queue.Queue(maxsize=10)
-                # Use a larger display size (3x the original size)
-                self._displayer = ImageDisplayer(
-                    self._frames_queue, 
-                    overlay_heatmap,
-                    display_size=(224 * 3, 224 * 3)
-                )
-                self._displayer.start()
-            else:
                 import mujoco.viewer
                 self._viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=True, show_right_ui=True)
         
@@ -186,6 +171,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         # self._block_z = self._model.geom("block").size[2]
 
         self.ik_configuration = mink.Configuration(self.model)
+
         # Task definitions using mink library
         self.l_ee_task = mink.FrameTask(
             frame_name="left/grasp_site",
@@ -285,9 +271,9 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
 
         self.ik_configuration.update(self._data.qpos)
         self.posture_task.set_target_from_configuration(self.ik_configuration)
-        # self.set_ik_targets(
-        #     LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
-        # )
+        self.set_ik_targets(
+            LEFT_HOME[:3], LEFT_HOME[3:], RIGHT_HOME[:3], RIGHT_HOME[3:]
+        )
 
 
     def step(
@@ -337,7 +323,6 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         self._data.ctrl[self._gripper_ctrl_ids[0]] = left_ng * 255
         self._data.ctrl[self._gripper_ctrl_ids[1]] = right_ng * 255
 
-        return 0 , {}
 
     # directly takes in joint angles from both arms and grippers, (16,)
     def step_joints(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
@@ -360,6 +345,7 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
         return obs, rew, done, False, {}
 
     def render(self):
+        "Render the camera view; use ']' Keyboard command"
         rendered_frames = []
         for cam_name in self.camera_names:
             self._renderer.update_scene(self.data, camera=cam_name)
@@ -391,8 +377,6 @@ class DoubleInsertDualXarmsGymEnv(MujocoGymEnv):
             offset = offset / norm * max_offset
         return offset
 
-from tqdm import tqdm
-
 if __name__ == "__main__":
     env = DoubleInsertDualXarmsGymEnv(
         control_freq=60,
@@ -409,7 +393,7 @@ if __name__ == "__main__":
 
         while not (done or truncated):
             action = [0] * 14
-            truncated, info = env.step(action)
+            env.step(action)
             human_rate.sleep()
 
         env.close()

@@ -13,7 +13,7 @@
   <asset>
     <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
     <material name="grid" texture="grid" texrepeat="2 2" texuniform="true" reflectance="0"/>
-    <texture name="T_simpleWoodTable" type="2d" height="512" width="512" file="./assets/wood4.png" />
+    <texture name="T_simpleWoodTable" type="2d" height="512" width="512" colorspace="linear" file="./assets/wood4.png" />
     <material name="M_simpleWoodTable" texture="T_simpleWoodTable" rgba="0.8 0.8 0.8 1" shininess="0.5" reflectance="0" texrepeat="2 2" texuniform="true" />
     <texture name="T_simpleWood1" type="2d" height="64" width="64" file="./assets/wood1.png" />
     <material name="M_simpleWood1" texture="T_simpleWood1" rgba="0.6 0.6 0.6 1" shininess="0.75" reflectance="0" texrepeat="16 16" texuniform="true" />
