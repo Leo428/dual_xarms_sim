@@ -332,44 +332,37 @@ class RMPDualXArmsEnv(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         action = action.astype(np.float32)
-        left_gripper_pos = self.robot_states["left/gripper_pos"]
-        right_gripper_pos = self.robot_states["right/gripper_pos"]
 
-        left_d_xyz = action[:3]
-        left_d_xyz = self.limit_offset_norm(left_d_xyz, self._MAX_LINEAR_VELOCITY)
-        left_d_rpy = action[3:6]
-        left_d_rpy = self.limit_offset_norm(left_d_rpy, self._MAX_ANGULAR_VELOCITY)
-        left_dg = -action[6]
-        right_d_xyz = action[7:10]
-        right_d_xyz = self.limit_offset_norm(right_d_xyz, self._MAX_LINEAR_VELOCITY)
-        right_d_rpy = action[10:13]
-        right_d_rpy = self.limit_offset_norm(right_d_rpy, self._MAX_ANGULAR_VELOCITY)
-        right_dg = -action[13]
+        left_xyz = action[:3]
+        left_rpy = action[3:6]
+        left_gripper = action[6]
+        right_xyz = action[7:10]
+        right_rpy = action[10:13]
+        right_gripper = action[13]
 
-        left_d_quat = R.from_euler("xyz", left_d_rpy)
-        right_d_quat = R.from_euler("xyz", right_d_rpy)
-        self.left_target_tcp_pose[3:7] = (left_d_quat * R.from_quat(self.left_target_tcp_pose[3:7], scalar_first=True)).as_quat(scalar_first=True)
-        self.right_target_tcp_pose[3:7] = (right_d_quat * R.from_quat(self.right_target_tcp_pose[3:7], scalar_first=True)).as_quat(scalar_first=True)
-        self.left_target_tcp_pose[0:3] += left_d_xyz
-        self.right_target_tcp_pose[0:3] += right_d_xyz
+        left_d_xyz = self.limit_offset_norm(left_xyz - self.left_target_tcp_pose[0:3], self._MAX_LINEAR_VELOCITY)
         self.left_target_tcp_pose[0:3] = np.clip(
-            self.left_target_tcp_pose[0:3], _LEFT_CARTESIAN_BOUNDS[0], _LEFT_CARTESIAN_BOUNDS[1]
-        )
-        self.right_target_tcp_pose[0:3] = np.clip(
-            self.right_target_tcp_pose[0:3], _RIGHT_CARTESIAN_BOUNDS[0], _RIGHT_CARTESIAN_BOUNDS[1]
+            self.left_target_tcp_pose[0:3] + left_d_xyz, _LEFT_CARTESIAN_BOUNDS[0], _LEFT_CARTESIAN_BOUNDS[1]
         )
 
-        # gripper range on the real arms is between 80 and 840
-        if abs(left_dg) > 0.05:
-            left_dg = left_dg * 80
-            left_target_gripper_pos = np.clip(left_gripper_pos + left_dg, 80, 840)
-        else:
-            left_target_gripper_pos = np.array((0.0,), dtype=np.float32)
-        if abs(right_dg) > 0.05:
-            right_dg = right_dg * 80
-            right_target_gripper_pos = np.clip(right_gripper_pos + right_dg, 80, 840)
-        else:
-            right_target_gripper_pos = np.array((0.0,), dtype=np.float32)
+        right_d_xyz = self.limit_offset_norm(right_xyz - self.right_target_tcp_pose[0:3], self._MAX_LINEAR_VELOCITY)
+        self.right_target_tcp_pose[0:3] = np.clip(
+            self.right_target_tcp_pose[0:3] + right_d_xyz, _RIGHT_CARTESIAN_BOUNDS[0], _RIGHT_CARTESIAN_BOUNDS[1]
+        )
+
+        left_current_rot = R.from_quat(self.left_target_tcp_pose[3:7], scalar_first=True)
+        left_rot_delta = R.from_euler("xyz", left_rpy) * left_current_rot.inv()
+        left_rot_delta_clamped = R.from_rotvec(self.limit_offset_norm(left_rot_delta.as_rotvec(), self._MAX_ANGULAR_VELOCITY))
+        self.left_target_tcp_pose[3:7] = (left_rot_delta_clamped * left_current_rot).as_quat(scalar_first=True)
+
+        right_current_rot = R.from_quat(self.right_target_tcp_pose[3:7], scalar_first=True)
+        right_rot_delta = R.from_euler("xyz", right_rpy) * right_current_rot.inv()
+        right_rot_delta_clamped = R.from_rotvec(self.limit_offset_norm(right_rot_delta.as_rotvec(), self._MAX_ANGULAR_VELOCITY))
+        self.right_target_tcp_pose[3:7] = (right_rot_delta_clamped * right_current_rot).as_quat(scalar_first=True)
+
+        # gripper action is global absolute position in [80, 840]
+        left_target_gripper_pos = np.clip(np.array((left_gripper,), dtype=np.float32), 80, 840)
+        right_target_gripper_pos = np.clip(np.array((right_gripper,), dtype=np.float32), 80, 840)
 
         # Send action command to central server
         target_cmd = np.concat([

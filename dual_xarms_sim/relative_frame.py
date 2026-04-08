@@ -140,25 +140,29 @@ class RelativeFrame(gym.Wrapper):
         """
         Transform action from body(end-effector) frame into into spatial(base) frame
         using the adjoint matrix
-        """
+        NOTE: MODIFIED TO USE GLOBAL ACTIONS SO THIS ENTIRE FUNCTION IS COMMENTED OUT
+        
         new_action = action.copy() # to avoid modifying the original action
         # left arm
         new_action[:6] = self.adjoint_matrix["left"] @ action[:6]
         # right arm
         new_action[7:13] = self.adjoint_matrix["right"] @ action[7:13]
-        return new_action
+        """
+        return action
 
     def transform_action_inv(self, action: np.ndarray):
         """
         Transform action from spatial(base) frame into body(end-effector) frame
         using the adjoint matrix.
-        """
-        new_action = action.copy() # to avoid modifying the original action
+        NOTE: MODIFIED TO USE GLOBAL ACTIONS SO THIS ENTIRE FUNCTION IS COMMENTED OUT
+
+                new_action = action.copy() # to avoid modifying the original action
         # left arm
         new_action[:6] = np.linalg.inv(self.adjoint_matrix["left"]) @ action[:6]
         # right arm
         new_action[7:13] = np.linalg.inv(self.adjoint_matrix["right"]) @ action[7:13]
-        return new_action
+        """
+        return action
 
 class WristRelativeTo(gym.ObservationWrapper):
     """
