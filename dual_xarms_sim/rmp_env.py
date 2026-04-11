@@ -12,8 +12,11 @@ import cv2
 import queue
 import threading
 from copy import deepcopy
+import logging
 
 from dual_xarms_sim.oculus_intervention import OculusIntervention
+
+logger = logging.getLogger(__name__)
 
 _HOME_JOINT_QPOS = np.array([0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0, 0, -0.25891, -0.00020, 1.03223, 0, 1.31830, 0])
 _LEFT_HOME_TCP_POSE = np.array([7.4233063e-02, 3.8093147e-01, 1.9769229e-01, -2.7911010e-05, 9.9990791e-01, -9.1831549e-05, -1.3579541e-02])
@@ -57,7 +60,7 @@ class ImageDisplayer(threading.Thread):
             # resize both to 360×360
             self.heatmap_bgr    = cv2.resize(hm_bgr,   (360, 360), interpolation=cv2.INTER_LINEAR)
 
-            print(f"Loaded and resized heatmap to {self.heatmap_bgr.shape}")
+            logger.debug("Loaded and resized heatmap to %s", self.heatmap_bgr.shape)
 
     def set_overlay_visible(self, visible: bool):
         self.show_overlay = visible
@@ -277,6 +280,11 @@ class RMPDualXArmsEnv(gym.Env):
         self.right_target_tcp_pose = self.robot_states["right/tcp_pose"]
         self.bar.reset()
         self.step_count = 0
+        logger.debug(
+            "reset: left/tcp_pose=%s right/tcp_pose=%s",
+            np.array2string(obs["state"]["left/tcp_pose"], precision=4, suppress_small=True),
+            np.array2string(obs["state"]["right/tcp_pose"], precision=4, suppress_small=True),
+        )
         return obs, {}
 
     def _compute_observation(self) -> Dict[str, np.ndarray]:
@@ -369,6 +377,14 @@ class RMPDualXArmsEnv(gym.Env):
             self.left_target_tcp_pose, left_target_gripper_pos,
             self.right_target_tcp_pose, right_target_gripper_pos,
         ])
+        logger.debug(
+            "step %d target_cmd: left_pose=%s left_gripper=%s right_pose=%s right_gripper=%s",
+            self.step_count,
+            np.array2string(self.left_target_tcp_pose, precision=4, suppress_small=True),
+            np.array2string(left_target_gripper_pos, precision=1, suppress_small=True),
+            np.array2string(self.right_target_tcp_pose, precision=4, suppress_small=True),
+            np.array2string(right_target_gripper_pos, precision=1, suppress_small=True),
+        )
         self.action_cmd_pub.send_json(
             {
                 "timestamp": time.time(),
@@ -385,6 +401,12 @@ class RMPDualXArmsEnv(gym.Env):
         self.gym_rate.sleep()
         self.bar.update(1)
         obs = self._compute_observation()
+        logger.debug(
+            "step %d: left/tcp_pose=%s right/tcp_pose=%s",
+            self.step_count,
+            np.array2string(obs["state"]["left/tcp_pose"], precision=4, suppress_small=True),
+            np.array2string(obs["state"]["right/tcp_pose"], precision=4, suppress_small=True),
+        )
         return obs, reward, done, truncated, {}
 
     def close(self):
@@ -397,6 +419,11 @@ class RMPDualXArmsEnv(gym.Env):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logger.setLevel(logging.DEBUG)
     from dual_xarms_sim.relative_frame import RelativeFrame, WristRelativeTo
     try:
         env = RMPDualXArmsEnv(
@@ -404,8 +431,8 @@ if __name__ == "__main__":
                 overlay_heatmap="/home/huzheyuan/dual_xarms/dual_xarms_sim/dual_xarms_sim/real_hang_r0.png"
             )
         env = OculusIntervention(env, freq=60)
-        env = RelativeFrame(env)
-        env = WristRelativeTo(env)
+        #env = RelativeFrame(env)
+        #env = WristRelativeTo(env)
 
         obs, _ = env.reset()
         done = False

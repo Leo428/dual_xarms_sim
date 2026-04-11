@@ -120,7 +120,7 @@ class RelativeFrame(gym.Wrapper):
         """
         Transform observations from spatial(base) frame into body(end-effector) frame
         using the adjoint matrix
-        """
+        
         for side in ["left", "right"]:
             adjoint_inv = np.linalg.inv(self.adjoint_matrix[side])
             obs["state"][f"{side}/wrist_tcp_vel"] = adjoint_inv @ obs["state"][f"{side}/tcp_vel"]
@@ -133,7 +133,9 @@ class RelativeFrame(gym.Wrapper):
                 p_b_r = T_b_r[:3, 3]
                 theta_b_r = R.from_matrix(T_b_r[:3, :3]).as_quat()
                 obs["state"][f"{side}/wrist_tcp_pose"] = np.concatenate((p_b_r, theta_b_r))
-
+            NOTE: MODIFIED TO USE GLOBAL ACTIONS SO THIS ENTIRE FUNCTION IS COMMENTED OUT
+            WE ARE USING GLOBAL STATES RELATIVE TO BASE FRAME
+        """
         return obs
 
     def transform_action(self, action: np.ndarray):
