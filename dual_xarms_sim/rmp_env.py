@@ -340,6 +340,8 @@ class RMPDualXArmsEnv(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         action = action.astype(np.float32)
+        left_gripper_pos = self.robot_states["left/gripper_pos"]
+        right_gripper_pos = self.robot_states["right/gripper_pos"]
 
         left_xyz = action[:3]
         left_rpy = action[3:6]
@@ -369,22 +371,37 @@ class RMPDualXArmsEnv(gym.Env):
         self.right_target_tcp_pose[3:7] = (right_rot_delta_clamped * right_current_rot).as_quat(scalar_first=True)
 
         # gripper action is global absolute position in [80, 840]
-        left_target_gripper_pos = np.clip(np.array((left_gripper,), dtype=np.float32), 80, 840)
-        right_target_gripper_pos = np.clip(np.array((right_gripper,), dtype=np.float32), 80, 840)
+        # dead-zone: if commanded change from current position is <= 4 units, emit 0.0 sentinel
+        left_gripper_pos = left_gripper_pos.item()
+        right_gripper_pos = right_gripper_pos.item()
+    
+        if abs(left_gripper - left_gripper_pos) < 4:
+            left_target_gripper_pos = np.array((left_gripper_pos,), dtype=np.float32)
+        else: 
+            left_target_gripper_pos = np.clip(np.array((left_gripper,), dtype=np.float32), 80, 840)
+
+        if abs(right_gripper - right_gripper_pos) < 4:
+            right_target_gripper_pos = np.array((right_gripper_pos,), dtype=np.float32)
+        else: 
+            right_target_gripper_pos = np.clip(np.array((right_gripper,), dtype=np.float32), 80, 840)
 
         # Send action command to central server
         target_cmd = np.concat([
             self.left_target_tcp_pose, left_target_gripper_pos,
             self.right_target_tcp_pose, right_target_gripper_pos,
         ])
-        logger.debug(
-            "step %d target_cmd: left_pose=%s left_gripper=%s right_pose=%s right_gripper=%s",
-            self.step_count,
-            np.array2string(self.left_target_tcp_pose, precision=4, suppress_small=True),
-            np.array2string(left_target_gripper_pos, precision=1, suppress_small=True),
-            np.array2string(self.right_target_tcp_pose, precision=4, suppress_small=True),
-            np.array2string(right_target_gripper_pos, precision=1, suppress_small=True),
-        )
+        
+        # logger.debug(
+        #     "step %d gripper: left_current=%s left_action=%.1f left_target=%s "
+        #     "right_current=%s right_action=%.1f right_target=%s",
+        #     self.step_count,
+        #     np.array2string(left_gripper_pos, precision=1, suppress_small=True),
+        #     float(left_gripper),
+        #     np.array2string(left_target_gripper_pos, precision=1, suppress_small=True),
+        #     np.array2string(right_gripper_pos, precision=1, suppress_small=True),
+        #     float(right_gripper),
+        #     np.array2string(right_target_gripper_pos, precision=1, suppress_small=True),
+        # )
         self.action_cmd_pub.send_json(
             {
                 "timestamp": time.time(),
@@ -401,12 +418,12 @@ class RMPDualXArmsEnv(gym.Env):
         self.gym_rate.sleep()
         self.bar.update(1)
         obs = self._compute_observation()
-        logger.debug(
-            "step %d: left/tcp_pose=%s right/tcp_pose=%s",
-            self.step_count,
-            np.array2string(obs["state"]["left/tcp_pose"], precision=4, suppress_small=True),
-            np.array2string(obs["state"]["right/tcp_pose"], precision=4, suppress_small=True),
-        )
+        # logger.debug(
+        #     "step %d: left/tcp_pose=%s right/tcp_pose=%s",
+        #     self.step_count,
+        #     np.array2string(obs["state"]["left/tcp_pose"], precision=4, suppress_small=True),
+        #     np.array2string(obs["state"]["right/tcp_pose"], precision=4, suppress_small=True),
+        # )
         return obs, reward, done, truncated, {}
 
     def close(self):
